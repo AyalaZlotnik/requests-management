@@ -60,14 +60,14 @@ const SORTABLE: readonly string[] = ['title', 'organizationName', 'status', 'pri
         </ng-container>
 
         <ng-container matColumnDef="status">
-          <th mat-header-cell *matHeaderCellDef mat-sort-header>סטטוס</th>
+          <th mat-header-cell *matHeaderCellDef>סטטוס</th>
           <td mat-cell *matCellDef="let row">
             <span class="badge" [attr.data-status]="row.status">{{ row.status | statusLabel }}</span>
           </td>
         </ng-container>
 
         <ng-container matColumnDef="priority">
-          <th mat-header-cell *matHeaderCellDef mat-sort-header>עדיפות</th>
+          <th mat-header-cell *matHeaderCellDef>עדיפות</th>
           <td mat-cell *matCellDef="let row">
             <span class="priority" [attr.data-priority]="row.priority">{{ row.priority | priorityLabel }}</span>
           </td>
