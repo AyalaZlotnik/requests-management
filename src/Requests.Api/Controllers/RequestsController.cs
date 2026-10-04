@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Requests.Api.ErrorHandling;
 using Requests.Api.Http;
 using Requests.Application.Common;
 using Requests.Application.Requests.Contracts;
@@ -12,7 +13,8 @@ namespace Requests.Api.Controllers;
 public class RequestsController(
     IRequestQueryService queries,
     IRequestCommandService commands,
-    IRequestSummaryService summary) : ControllerBase
+    IRequestSummaryService summary,
+    ILogger<RequestsController> logger) : ControllerBase
 {
     /// <summary>Search requests with server-side filtering, sorting and paging.</summary>
     [HttpGet]
@@ -68,8 +70,10 @@ public class RequestsController(
         switch (EntityTags.TryReadIfMatch(ifMatch, out var expectedVersion, out var detail))
         {
             case EntityTags.IfMatchError.Missing:
+                RequestRejectionLog.IfMatchRejected(logger, StatusCodes.Status428PreconditionRequired, Request.Path, "missing");
                 return Problem(detail, statusCode: StatusCodes.Status428PreconditionRequired, title: "If-Match header is required");
             case EntityTags.IfMatchError.Invalid:
+                RequestRejectionLog.IfMatchRejected(logger, StatusCodes.Status400BadRequest, Request.Path, detail);
                 return Problem(detail, statusCode: StatusCodes.Status400BadRequest, title: "Invalid If-Match header");
         }
 

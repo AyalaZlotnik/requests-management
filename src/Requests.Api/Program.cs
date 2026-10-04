@@ -10,6 +10,7 @@ var builder = WebApplication.CreateBuilder(args);
 var enumsAsNames = new JsonStringEnumConverter(allowIntegerValues: false);
 builder.Services
     .AddControllers()
+    .ConfigureApiBehaviorOptions(o => o.LogValidationFailures())
     .AddJsonOptions(o =>
     {
         o.JsonSerializerOptions.Converters.Add(enumsAsNames);
