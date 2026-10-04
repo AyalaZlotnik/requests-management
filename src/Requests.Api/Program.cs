@@ -29,10 +29,28 @@ builder.Services.AddInfrastructure(builder.Configuration);
 
 var app = builder.Build();
 
-// "dotnet run -- seed [count]" re-creates the test data and exits.
+// "dotnet run -- seed [count]" deletes all requests, re-creates the test data and exits.
 if (args.Length > 0 && args[0] == "seed")
 {
-    int? count = args.Length > 1 && int.TryParse(args[1], out var n) ? n : null;
+    if (app.Environment.IsProduction())
+    {
+        Console.Error.WriteLine("seed deletes all data and is not available in Production.");
+        Environment.ExitCode = 1;
+        return;
+    }
+
+    int? count = null;
+    if (args.Length > 1)
+    {
+        if (!int.TryParse(args[1], out var n) || n < 1 || n > DataSeedLimits.MaxCount)
+        {
+            Console.Error.WriteLine($"seed count must be a whole number between 1 and {DataSeedLimits.MaxCount:N0}.");
+            Environment.ExitCode = 1;
+            return;
+        }
+        count = n;
+    }
+
     await app.Services.ReseedDatabaseAsync(count);
     return;
 }

@@ -7,6 +7,11 @@ using Requests.Infrastructure.Persistence;
 
 namespace Requests.Infrastructure;
 
+public static class DataSeedLimits
+{
+    public const int MaxCount = 1_000_000;
+}
+
 public static class DependencyInjection
 {
     /// <summary>The only entry point the API uses to wire up data access and caching.</summary>

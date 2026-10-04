@@ -4,6 +4,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Requests.Application.Requests.Entities;
+using Requests.Infrastructure;
 
 namespace Requests.Infrastructure.Persistence;
 
@@ -61,6 +62,10 @@ public partial class DataSeeder(RequestsDbContext db, TimeProvider timeProvider,
     /// <summary>Deletes all requests and history and inserts <paramref name="count"/> new requests.</summary>
     public async Task SeedAsync(int count, CancellationToken ct = default)
     {
+        // Checked before anything is deleted.
+        ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(count, DataSeedLimits.MaxCount);
+
         await db.Database.MigrateAsync(ct);
 
         LogDeleting(logger);
