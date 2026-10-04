@@ -45,8 +45,10 @@ public sealed partial class MemorySummaryCache(IMemoryCache cache, IOptions<Cach
     public void Invalidate()
     {
         var previous = Interlocked.Exchange(ref _invalidation, new CancellationTokenSource());
+        // Cancel only. A summary read running in parallel may have just taken this source and be about to
+        // read its Token – after Dispose() that would throw ObjectDisposedException. A cancelled source holds
+        // no unmanaged resources here, so leaving it to the garbage collector is safe.
         previous.Cancel();
-        previous.Dispose();
         LogInvalidated(logger);
     }
 
