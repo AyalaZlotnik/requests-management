@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Requests.Application.Requests.Abstractions;
@@ -17,7 +18,7 @@ namespace Requests.Tests.Support;
 /// classes run in parallel without seeing each other's data.
 /// Server: env var REQUESTS_TEST_SERVER, default LocalDB.
 /// </summary>
-public sealed class RequestsApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
+public class RequestsApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -30,10 +31,14 @@ public sealed class RequestsApiFactory : WebApplicationFactory<Program>, IAsyncL
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.ConfigureTestServices(ConfigureTestServices);
         builder.UseEnvironment("Testing");
         builder.UseSetting("ConnectionStrings:RequestsDb", _connectionString);
         builder.UseSetting("Database:MigrateOnStartup", "false");
     }
+
+    /// <summary>Lets a derived factory replace services for its test class.</summary>
+    protected virtual void ConfigureTestServices(IServiceCollection services) { }
 
     public async Task InitializeAsync()
     {
