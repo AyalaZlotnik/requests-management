@@ -1,6 +1,6 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpParams, HttpResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, map } from 'rxjs';
 import {
   BulkStatusItem,
   BulkUpdateResult,
@@ -27,21 +27,46 @@ export class RequestsApi {
     return this.http.get<RequestsSummary>(`${this.baseUrl}/summary`);
   }
 
-  getById(id: number): Observable<RequestDetails> {
-    return this.http.get<RequestDetails>(`${this.baseUrl}/${id}`);
+  /** The ETag is the version to send back in If-Match when updating this request. */
+  getById(id: number): Observable<VersionedRequest> {
+    return this.http
+      .get<RequestDetails>(`${this.baseUrl}/${id}`, { observe: 'response' })
+      .pipe(map(toVersioned));
   }
 
   getHistory(id: number): Observable<StatusHistoryEntry[]> {
     return this.http.get<StatusHistoryEntry[]>(`${this.baseUrl}/${id}/history`);
   }
 
-  updateStatus(id: number, status: RequestStatus, rowVersion: string, changedBy: string): Observable<RequestDetails> {
-    return this.http.patch<RequestDetails>(`${this.baseUrl}/${id}/status`, { status, rowVersion, changedBy });
+  /** Conditional update: rejected with 409 if the request changed since the given ETag was read. */
+  updateStatus(id: number, status: RequestStatus, etag: string, changedBy: string): Observable<VersionedRequest> {
+    return this.http
+      .patch<RequestDetails>(
+        `${this.baseUrl}/${id}/status`,
+        { status, changedBy },
+        { headers: new HttpHeaders({ 'If-Match': etag }), observe: 'response' },
+      )
+      .pipe(map(toVersioned));
   }
 
   bulkUpdateStatus(status: RequestStatus, items: BulkStatusItem[], changedBy: string): Observable<BulkUpdateResult> {
     return this.http.post<BulkUpdateResult>(`${this.baseUrl}/bulk/status`, { status, items, changedBy });
   }
+}
+
+export interface VersionedRequest {
+  request: RequestDetails;
+  etag: string;
+}
+
+/** ETag for a version we already hold (e.g. the current state returned in a 409). */
+export function etagOf(rowVersion: string): string {
+  return `"${rowVersion}"`;
+}
+
+function toVersioned(response: HttpResponse<RequestDetails>): VersionedRequest {
+  const request = response.body!;
+  return { request, etag: response.headers.get('ETag') ?? etagOf(request.rowVersion) };
 }
 
 function toParams(query: RequestQuery): HttpParams {
