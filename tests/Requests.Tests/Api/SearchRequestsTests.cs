@@ -1,10 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc;
-using Requests.Api.Domain;
-using Requests.Api.Features.Requests.Dtos;
-using Requests.Tests.Infrastructure;
-using static Requests.Tests.Infrastructure.RequestsApiFactory;
+using Requests.Application.Requests.Entities;
+using Requests.Application.Common;
+using Requests.Application.Requests.Contracts;
+using Requests.Tests.Support;
+using static Requests.Tests.Support.RequestsApiFactory;
 
 namespace Requests.Tests.Api;
 

@@ -1,5 +1,5 @@
-using Requests.Api.Domain;
-using Requests.Tests.Infrastructure;
+using Requests.Application.Requests.Entities;
+using Requests.Tests.Support;
 
 namespace Requests.Tests.Domain;
 
