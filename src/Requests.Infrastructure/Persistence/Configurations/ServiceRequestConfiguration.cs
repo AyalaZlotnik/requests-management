@@ -27,10 +27,12 @@ public class ServiceRequestConfiguration : IEntityTypeConfiguration<ServiceReque
         builder.HasIndex(r => r.CreatedAt)
             .HasDatabaseName("IX_Requests_CreatedAt");
 
-        // Most common filter (e.g. "all New requests") with the default sort. Priority is included
-        // so the status/priority aggregation is answered from this narrow index only.
+        // Most common filter (e.g. "all New requests") with the default sort. Priority and UpdatedAt are
+        // included so the summary GROUP BY (Status, Priority) with its CreatedAt / UpdatedAt aggregates
+        // is answered from this narrow index only. UpdatedAt changes together with Status, so keeping it
+        // here adds no extra index writes.
         builder.HasIndex(r => new { r.Status, r.CreatedAt })
-            .IncludeProperties(r => r.Priority)
+            .IncludeProperties(r => new { r.Priority, r.UpdatedAt })
             .HasDatabaseName("IX_Requests_Status_CreatedAt");
 
         // "My requests" / workload per handler and the top-assignees aggregation.
