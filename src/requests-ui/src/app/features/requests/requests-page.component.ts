@@ -1,6 +1,7 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
+import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { errorMessage } from '../../core/api/http-error';
 import { CurrentUser } from '../../core/current-user.service';
@@ -21,6 +22,7 @@ import { SummaryPanelComponent } from './summary-panel.component';
     MatPaginatorModule,
     MatProgressBarModule,
     MatButtonModule,
+    MatSidenavModule,
     SummaryPanelComponent,
     RequestFiltersComponent,
     RequestsTableComponent,
@@ -29,10 +31,22 @@ import { SummaryPanelComponent } from './summary-panel.component';
   ],
   providers: [RequestsListStore],
   template: `
-    <app-summary-panel [filters]="filters()" [refreshKey]="summaryRefresh()" />
+    <!-- Details open in a drawer over the list, so the table keeps its full width. Esc or a click outside closes it. -->
+    <mat-drawer-container class="page">
+      <mat-drawer
+        class="details-drawer"
+        position="end"
+        mode="over"
+        [opened]="store.selectedId() !== null"
+        (closedStart)="store.openRequest(null)"
+      >
+        @if (store.selectedId(); as id) {
+          <app-request-details [requestId]="id" (changed)="onRequestChanged()" (closed)="store.openRequest(null)" />
+        }
+      </mat-drawer>
 
-    <div class="layout" [class.with-details]="store.selectedId() !== null">
-      <section class="list">
+      <mat-drawer-content class="page-content">
+        <app-summary-panel [filters]="filters()" [refreshKey]="summaryRefresh()" (statusClick)="toggleStatus($event)" />
         <app-request-filters [value]="filters()" (filtersChange)="store.setFilters($event)" />
 
         @if (store.selection().size > 0) {
@@ -97,12 +111,8 @@ import { SummaryPanelComponent } from './summary-panel.component';
             <div class="state" role="status">טוען פניות…</div>
           }
         </div>
-      </section>
-
-      @if (store.selectedId(); as id) {
-        <app-request-details [requestId]="id" (changed)="onRequestChanged()" (closed)="store.openRequest(null)" />
-      }
-    </div>
+      </mat-drawer-content>
+    </mat-drawer-container>
   `,
 })
 export class RequestsPageComponent {
@@ -116,6 +126,13 @@ export class RequestsPageComponent {
   protected readonly bulkBusy = signal(false);
   protected readonly bulkResult = signal<BulkUpdateResult | null>(null);
   protected readonly bulkError = signal<string | null>(null);
+
+  /** Clicking a status in the summary shows only that status; clicking it again removes the filter. */
+  protected toggleStatus(status: RequestStatus): void {
+    const current = this.filters();
+    const only = current.status.length === 1 && current.status[0] === status;
+    this.store.setFilters({ ...current, status: only ? [] : [status] });
+  }
 
   protected onPage(event: PageEvent): void {
     this.store.setPage(event.pageIndex + 1, event.pageSize);

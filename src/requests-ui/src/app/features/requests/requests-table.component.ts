@@ -51,12 +51,12 @@ const SORTABLE: readonly string[] = ['title', 'organizationName', 'status', 'pri
 
         <ng-container matColumnDef="title">
           <th mat-header-cell *matHeaderCellDef mat-sort-header>כותרת</th>
-          <td mat-cell *matCellDef="let row">{{ row.title }}</td>
+          <td mat-cell *matCellDef="let row" class="clip" [title]="row.title">{{ row.title }}</td>
         </ng-container>
 
         <ng-container matColumnDef="organizationName">
           <th mat-header-cell *matHeaderCellDef mat-sort-header>ארגון</th>
-          <td mat-cell *matCellDef="let row">{{ row.organizationName }}</td>
+          <td mat-cell *matCellDef="let row" class="clip" [title]="row.organizationName">{{ row.organizationName }}</td>
         </ng-container>
 
         <ng-container matColumnDef="status">
@@ -75,17 +75,17 @@ const SORTABLE: readonly string[] = ['title', 'organizationName', 'status', 'pri
 
         <ng-container matColumnDef="assignedTo">
           <th mat-header-cell *matHeaderCellDef>מטפל/ת</th>
-          <td mat-cell *matCellDef="let row">{{ row.assignedTo ?? '—' }}</td>
+          <td mat-cell *matCellDef="let row" class="nowrap">{{ row.assignedTo ?? '—' }}</td>
         </ng-container>
 
         <ng-container matColumnDef="createdAt">
           <th mat-header-cell *matHeaderCellDef mat-sort-header>נוצרה</th>
-          <td mat-cell *matCellDef="let row" class="nowrap">{{ row.createdAt | date: 'dd/MM/yyyy HH:mm' }}</td>
+          <td mat-cell *matCellDef="let row" class="nowrap">{{ row.createdAt | date: 'dd/MM/yy HH:mm' }}</td>
         </ng-container>
 
         <ng-container matColumnDef="updatedAt">
           <th mat-header-cell *matHeaderCellDef mat-sort-header>עודכנה</th>
-          <td mat-cell *matCellDef="let row" class="nowrap">{{ row.updatedAt | date: 'dd/MM/yyyy HH:mm' }}</td>
+          <td mat-cell *matCellDef="let row" class="nowrap">{{ row.updatedAt | date: 'dd/MM/yy HH:mm' }}</td>
         </ng-container>
 
         <tr mat-header-row *matHeaderRowDef="columns; sticky: true"></tr>
