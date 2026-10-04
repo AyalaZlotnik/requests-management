@@ -8,6 +8,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ConnectionStatus } from '../../core/api/connection-status.service';
 import { errorMessage } from '../../core/api/http-error';
 import { CurrentUser } from '../../core/current-user.service';
+import { REQUESTS, agree, hebrewCount } from '../../core/i18n/hebrew-count';
 import { BULK_OUTCOME_LABELS } from '../../core/i18n/labels';
 import { BulkUpdateResult, RequestStatus } from '../../core/models/request.models';
 import { BulkStatusBarComponent } from './bulk-status-bar.component';
@@ -50,7 +51,7 @@ import { SummaryPanelComponent } from './summary-panel.component';
         }
       </mat-drawer>
 
-      <mat-drawer-content class="page-content">
+      <mat-drawer-content class="page-content" [class.with-bulk-bar]="store.selection().size > 0">
         <app-summary-panel [filters]="filters()" [refreshKey]="summaryRefresh()" (statusClick)="toggleStatus($event)" />
         <app-request-filters [value]="filters()" (filtersChange)="store.setFilters($event)" />
 
@@ -63,7 +64,7 @@ import { SummaryPanelComponent } from './summary-panel.component';
         }
         @if (bulkResult(); as r) {
           <div class="notice" [class.warning]="r.failed > 0" role="status">
-            עדכון מרוכז: {{ r.succeeded }} עודכנו, {{ r.failed }} לא עודכנו.
+            {{ bulkSummary(r) }}
             @if (r.failed > 0) {
               <ul>
                 @for (item of failedItems(r); track item.id) {
@@ -185,6 +186,19 @@ export class RequestsPageComponent {
         this.bulkError.set(errorMessage(e));
       },
     });
+  }
+
+  /** "עדכון מרוכז: עודכנו 3 פניות; לא עודכנה פנייה אחת." */
+  protected bulkSummary(result: BulkUpdateResult): string {
+    const parts = [
+      result.succeeded > 0
+        ? `${agree(result.succeeded, 'עודכנה', 'עודכנו')} ${hebrewCount(result.succeeded, REQUESTS)}`
+        : 'לא עודכנו פניות',
+    ];
+    if (result.failed > 0) {
+      parts.push(`${agree(result.failed, 'לא עודכנה', 'לא עודכנו')} ${hebrewCount(result.failed, REQUESTS)}`);
+    }
+    return `עדכון מרוכז: ${parts.join('; ')}.`;
   }
 
   protected failedItems(result: BulkUpdateResult) {

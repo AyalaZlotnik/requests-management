@@ -6,6 +6,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { catchError, combineLatest, map, of, switchMap, tap } from 'rxjs';
 import { RequestsApi } from '../../core/api/requests-api.service';
 import { errorMessage, isConnectionError } from '../../core/api/http-error';
+import { agree } from '../../core/i18n/hebrew-count';
 import { RequestFilters, RequestStatus, RequestsSummary } from '../../core/models/request.models';
 import { PriorityLabelPipe, StatusLabelPipe } from './status-label.pipe';
 
@@ -24,11 +25,11 @@ import { PriorityLabelPipe, StatusLabelPipe } from './status-label.pipe';
       } @else if (summary(); as s) {
         <div class="kpi">
           <span class="kpi-value">{{ s.total | number }}</span>
-          <span class="kpi-label">פניות</span>
+          <span class="kpi-label">{{ agree(s.total, 'פנייה', 'פניות') }}</span>
         </div>
         <div class="kpi">
           <span class="kpi-value warn">{{ s.openOlderThan7Days | number }}</span>
-          <span class="kpi-label">פתוחות מעל 7 ימים</span>
+          <span class="kpi-label">{{ agree(s.openOlderThan7Days, 'פתוחה', 'פתוחות') }} מעל 7 ימים</span>
         </div>
 
         <div class="status-counts" role="group" aria-label="סינון לפי סטטוס">
@@ -102,6 +103,7 @@ export class SummaryPanelComponent {
   protected readonly error = signal<string | null>(null);
   protected readonly loading = signal(false);
   protected readonly expanded = signal(false);
+  protected readonly agree = agree;
 
   protected readonly priorityFiltered = computed(() => this.filters().priority.length > 0);
   protected readonly maxPriority = computed(() => Math.max(1, ...(this.summary()?.byPriority.map((c) => c.count) ?? [])));

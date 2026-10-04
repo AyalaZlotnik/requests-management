@@ -135,7 +135,8 @@ h3 { font-size: var(--text-sm); margin: 0 0 var(--space-2); color: var(--muted);
 
 /* Page: list content + details drawer that opens over it (from the left in RTL) */
 .page { height: 100%; background: var(--bg); }
-.page-content { padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+/* Higher specificity than Material's own .mat-drawer-content { display: block }, which loads later. */
+.page .page-content { height: 100%; padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
 .details-drawer { width: min(460px, 92vw); }
 
 /* Summary strip */
@@ -194,12 +195,14 @@ ol.plain li { display: flex; justify-content: space-between; padding: 4px 0; }
 .active-filters { --mdc-chip-container-height: 28px; --mat-chip-container-height: 28px; }
 
 /* Results */
-.results { overflow: hidden; }
-.table-wrap { overflow: auto; max-height: calc(100vh - 300px); min-height: 200px; }
+/* The results panel takes all the remaining height; the table scrolls inside it and the paginator stays visible. */
+.results { flex: 1; min-height: 240px; display: flex; flex-direction: column; overflow: hidden; }
+app-requests-table { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.table-wrap { flex: 1; min-height: 0; overflow: auto; }
 /* Compact rows; long text stays on one line with an ellipsis (full text in the tooltip). */
 .table-wrap { --mat-table-row-item-container-height: 40px; --mat-table-header-container-height: 44px; }
 .mat-mdc-cell.clip { max-width: 0; width: 30%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-app-requests-table { display: block; transition: opacity .15s; }
+app-requests-table { transition: opacity .15s; }
 app-requests-table.busy { opacity: .55; }
 .mat-mdc-row { cursor: pointer; }
 .mat-mdc-row:hover { background: var(--hover); }
@@ -221,11 +224,17 @@ app-requests-table.busy { opacity: .55; }
 .state { padding: var(--space-6) var(--space-4); text-align: center; color: var(--muted); }
 .state.error { color: var(--danger); }
 
-/* Bulk bar */
+/* Bulk bar: floats at the bottom center while rows are selected, so the table does not jump. */
 .bulk-bar {
-  display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; padding: var(--space-2) var(--space-3);
-  background: var(--accent-soft); border: 1px solid #c9d8f5; border-radius: var(--radius);
+  display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; padding: var(--space-2) var(--space-4);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
 }
+.bulk-bar.floating {
+  position: fixed; z-index: 3; bottom: var(--space-6); left: 50%; transform: translateX(-50%);
+  max-width: calc(100vw - 2 * var(--space-4)); box-shadow: 0 6px 24px rgba(16, 24, 40, .18);
+}
+/* While the bar is shown, room is kept under the results so it never covers the paginator. */
+.page .page-content.with-bulk-bar { padding-bottom: 88px; }
 
 /* Details drawer */
 .details { padding: var(--space-4); }

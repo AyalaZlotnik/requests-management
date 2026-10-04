@@ -81,7 +81,7 @@ type FormValue = Omit<RequestFilters, 'createdFrom' | 'createdTo'> & { createdFr
           <app-icon name="tune" [size]="18" />
           סינון מתקדם
           @if (advancedCount()) {
-            <span class="count-badge" [attr.aria-label]="advancedCount() + ' סינונים מתקדמים פעילים'">{{ advancedCount() }}</span>
+            <span class="count-badge" [attr.aria-label]="advancedCount() === 1 ? 'סינון מתקדם אחד פעיל' : advancedCount() + ' סינונים מתקדמים פעילים'">{{ advancedCount() }}</span>
           }
         </button>
       </div>
