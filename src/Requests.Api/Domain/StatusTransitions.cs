@@ -9,7 +9,7 @@ namespace Requests.Api.Domain;
 /// </summary>
 public static class StatusTransitions
 {
-    private static readonly IReadOnlyDictionary<RequestStatus, RequestStatus[]> Allowed =
+    private static readonly Dictionary<RequestStatus, RequestStatus[]> Allowed =
         new Dictionary<RequestStatus, RequestStatus[]>
         {
             [RequestStatus.New] = [RequestStatus.InProgress, RequestStatus.Waiting],

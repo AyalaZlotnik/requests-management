@@ -17,7 +17,8 @@ public class CacheOptions
 /// being cached stale.
 /// Registered as a singleton because it owns the invalidation token.
 /// </summary>
-public sealed class SummaryCache(IMemoryCache cache, IOptions<CacheOptions> options, ILogger<SummaryCache> logger)
+public sealed partial class SummaryCache(IMemoryCache cache, IOptions<CacheOptions> options, ILogger<SummaryCache> logger)
+    : IDisposable
 {
     private const string Key = "requests:summary";
     private CancellationTokenSource _invalidation = new();
@@ -43,6 +44,11 @@ public sealed class SummaryCache(IMemoryCache cache, IOptions<CacheOptions> opti
         var previous = Interlocked.Exchange(ref _invalidation, new CancellationTokenSource());
         previous.Cancel();
         previous.Dispose();
-        logger.LogDebug("Summary cache invalidated");
+        LogInvalidated(logger);
     }
+
+    public void Dispose() => _invalidation.Dispose();
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Summary cache invalidated")]
+    private static partial void LogInvalidated(ILogger logger);
 }

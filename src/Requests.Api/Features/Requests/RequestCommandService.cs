@@ -20,7 +20,7 @@ public interface IRequestCommandService
 /// no lost updates, even when two requests race between read and write.
 /// The status change and its audit row are saved in the same transaction (one SaveChanges).
 /// </summary>
-public class RequestCommandService(
+public partial class RequestCommandService(
     RequestsDbContext db,
     SummaryCache summaryCache,
     TimeProvider timeProvider,
@@ -55,7 +55,7 @@ public class RequestCommandService(
         }
 
         summaryCache.Invalidate();
-        logger.LogInformation("Request {RequestId} status changed {PreviousStatus} -> {NewStatus}", id, previousStatus, request.Status);
+        LogStatusChanged(logger, id, previousStatus, request.Status);
 
         return request.ToDetails();
     }
@@ -120,7 +120,7 @@ public class RequestCommandService(
         // Keep the response in the same order as the request.
         var ordered = command.Items.Select(i => results[i.Id]).ToList();
         var succeeded = pending.Count;
-        logger.LogInformation("Bulk status update to {Status}: {Succeeded} succeeded, {Failed} failed out of {Requested}",
+        LogBulkCompleted(logger,
             newStatus, succeeded, ordered.Count - succeeded, ordered.Count);
 
         return new BulkUpdateStatusResponse(ordered.Count, succeeded, ordered.Count - succeeded, ordered);
@@ -172,4 +172,10 @@ public class RequestCommandService(
         var now = timeProvider.GetUtcNow().UtcDateTime;
         return now.AddTicks(-(now.Ticks % TimeSpan.TicksPerMillisecond));
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Request {RequestId} status changed {PreviousStatus} -> {NewStatus}")]
+    private static partial void LogStatusChanged(ILogger logger, int requestId, RequestStatus previousStatus, RequestStatus newStatus);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Bulk status update to {Status}: {Succeeded} succeeded, {Failed} failed out of {Requested}")]
+    private static partial void LogBulkCompleted(ILogger logger, RequestStatus status, int succeeded, int failed, int requested);
 }

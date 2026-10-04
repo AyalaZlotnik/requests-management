@@ -1,0 +1,10 @@
+# Store text files with LF in the repository; Git converts per platform on checkout.
+* text=auto eol=lf
+
+# Visual Studio tooling expects CRLF in these files.
+*.sln text eol=crlf
+
+# Never touch binary files.
+*.png binary
+*.ico binary
+*.pdf binary

@@ -8,7 +8,7 @@ namespace Requests.Api.Common.Errors;
 /// Maps exceptions to RFC 7807 Problem Details. Unexpected errors are logged
 /// and returned without internal details (no stack traces / SQL to the client).
 /// </summary>
-public sealed class GlobalExceptionHandler(IProblemDetailsService problemDetailsService, ILogger<GlobalExceptionHandler> logger)
+public sealed partial class GlobalExceptionHandler(IProblemDetailsService problemDetailsService, ILogger<GlobalExceptionHandler> logger)
     : IExceptionHandler
 {
     public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
@@ -16,7 +16,7 @@ public sealed class GlobalExceptionHandler(IProblemDetailsService problemDetails
         if (exception is OperationCanceledException && httpContext.RequestAborted.IsCancellationRequested)
         {
             // The client went away – nothing to return, and this is not an error.
-            logger.LogInformation("Request {Path} was cancelled by the client", httpContext.Request.Path);
+            LogCancelled(logger, httpContext.Request.Path);
             httpContext.Response.StatusCode = 499;
             return true;
         }
@@ -51,7 +51,7 @@ public sealed class GlobalExceptionHandler(IProblemDetailsService problemDetails
 
         if (problem is null)
         {
-            logger.LogError(exception, "Unhandled exception for {Method} {Path}", httpContext.Request.Method, httpContext.Request.Path);
+            LogUnhandled(logger, exception, httpContext.Request.Method, httpContext.Request.Path);
             problem = new ProblemDetails
             {
                 Status = StatusCodes.Status500InternalServerError,
@@ -60,7 +60,7 @@ public sealed class GlobalExceptionHandler(IProblemDetailsService problemDetails
         }
         else
         {
-            logger.LogWarning("{Title}: {Detail}", problem.Title, problem.Detail);
+            LogHandled(logger, problem.Status!.Value, problem.Title, problem.Detail);
         }
 
         httpContext.Response.StatusCode = problem.Status!.Value;
@@ -71,4 +71,13 @@ public sealed class GlobalExceptionHandler(IProblemDetailsService problemDetails
             Exception = exception
         });
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Request {Path} was cancelled by the client")]
+    private static partial void LogCancelled(ILogger logger, PathString path);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Unhandled exception for {Method} {Path}")]
+    private static partial void LogUnhandled(ILogger logger, Exception exception, string method, PathString path);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{StatusCode} {Title}: {Detail}")]
+    private static partial void LogHandled(ILogger logger, int statusCode, string? title, string? detail);
 }

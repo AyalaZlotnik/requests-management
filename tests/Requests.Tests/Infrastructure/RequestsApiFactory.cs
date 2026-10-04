@@ -8,7 +8,7 @@ using Requests.Api.Common.Caching;
 using Requests.Api.Data;
 using Requests.Api.Domain;
 
-namespace Requests.Api.Tests.Infrastructure;
+namespace Requests.Tests.Infrastructure;
 
 /// <summary>
 /// Hosts the real API in memory against a real SQL Server test database (separate from the dev database),
@@ -75,7 +75,7 @@ public sealed class RequestsApiFactory : WebApplicationFactory<Program>, IAsyncL
 }
 
 [CollectionDefinition(Name)]
-public class ApiCollection : ICollectionFixture<RequestsApiFactory>
+public class ApiTestsDefinition : ICollectionFixture<RequestsApiFactory>
 {
     public const string Name = "api";
 }

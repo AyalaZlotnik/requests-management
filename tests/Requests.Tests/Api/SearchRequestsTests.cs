@@ -3,12 +3,12 @@ using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc;
 using Requests.Api.Domain;
 using Requests.Api.Features.Requests.Dtos;
-using Requests.Api.Tests.Infrastructure;
-using static Requests.Api.Tests.Infrastructure.RequestsApiFactory;
+using Requests.Tests.Infrastructure;
+using static Requests.Tests.Infrastructure.RequestsApiFactory;
 
-namespace Requests.Api.Tests.Api;
+namespace Requests.Tests.Api;
 
-[Collection(ApiCollection.Name)]
+[Collection(ApiTestsDefinition.Name)]
 public class SearchRequestsTests(RequestsApiFactory factory)
 {
     private readonly HttpClient _client = factory.CreateClient();

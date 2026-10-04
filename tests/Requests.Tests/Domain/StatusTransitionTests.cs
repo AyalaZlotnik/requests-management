@@ -1,7 +1,7 @@
 using Requests.Api.Domain;
-using Requests.Api.Tests.Infrastructure;
+using Requests.Tests.Infrastructure;
 
-namespace Requests.Api.Tests.Domain;
+namespace Requests.Tests.Domain;
 
 public class StatusTransitionTests
 {

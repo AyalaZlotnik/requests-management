@@ -9,7 +9,7 @@ namespace Requests.Api.Data;
 /// Re-creates deterministic test data (same seed → same data) using SqlBulkCopy.
 /// Run with: dotnet run --project Requests.Api -- seed [count]
 /// </summary>
-public class DataSeeder(RequestsDbContext db, TimeProvider timeProvider, ILogger<DataSeeder> logger)
+public partial class DataSeeder(RequestsDbContext db, TimeProvider timeProvider, ILogger<DataSeeder> logger)
 {
     public const int DefaultCount = 100_000;
     private const int RandomSeed = 20261004;
@@ -40,7 +40,7 @@ public class DataSeeder(RequestsDbContext db, TimeProvider timeProvider, ILogger
     {
         await db.Database.MigrateAsync(ct);
 
-        logger.LogInformation("Deleting existing data");
+        LogDeleting(logger);
         await db.Database.ExecuteSqlRawAsync(
             """
             TRUNCATE TABLE RequestStatusHistory;
@@ -77,7 +77,7 @@ public class DataSeeder(RequestsDbContext db, TimeProvider timeProvider, ILogger
 
         // Fresh statistics so the first execution plans are based on the real data distribution.
         await db.Database.ExecuteSqlRawAsync("UPDATE STATISTICS Requests WITH FULLSCAN;", ct);
-        logger.LogInformation("Seeded {Count} requests", count);
+        LogSeeded(logger, count);
     }
 
     private static DataTable BuildTable(int count, DateTime nowUtc)
@@ -132,4 +132,10 @@ public class DataSeeder(RequestsDbContext db, TimeProvider timeProvider, ILogger
     }
 
     private static DateTime Min(DateTime a, DateTime b) => a < b ? a : b;
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Deleting existing data")]
+    private static partial void LogDeleting(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Seeded {Count} requests")]
+    private static partial void LogSeeded(ILogger logger, int count);
 }
