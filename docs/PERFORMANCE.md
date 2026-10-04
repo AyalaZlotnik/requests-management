@@ -12,7 +12,7 @@ sqlcmd -S "(localdb)\MSSQLLocalDB" -d RequestsManagement -E -f 65001 -i docs/per
 ## שיטה
 
 * **ה-SQL הוא בדיוק מה ש-EF Core 8 שולח.** הוא נלקח מלוג הפקודות (`Microsoft.EntityFrameworkCore.Database.Command=Information`) ורץ דרך `sp_executesql` עם פרמטרים, כך שתוכנית הביצוע זהה לאפליקציה.
-* **מדד ראשי – Logical reads** (`SET STATISTICS IO`): לא תלוי בעומס על המחשב. בנוסף CPU/Elapsed (`SET STATISTICS TIME`) ותוכנית ביצוע בפועל (`SET STATISTICS PROFILE`, כולל מספר השורות שעברו בכל אופרטור).
+* **מדד ראשי – Logical reads** (`SET STATISTICS IO`): לא תלוי בעומס על המחשב. בנוסף CPU/Elapsed (`SET STATISTICS TIME`) ותוכנית ביצוע בפועל (Actual Execution Plan, `SET STATISTICS XML`) – כולל מספר השורות וה-reads בכל אופרטור. התוכניות עצמן שמורות ב-[`performance/plans`](performance/plans), וראו [תוכניות ביצוע בפועל](#תוכניות-ביצוע-בפועל) למטה.
 * **עם אינדקס מול בלי:** כל שאילתה רצה גם עם `WITH (INDEX(1))`, שמכריח סריקה של כל הטבלה – כך רואים מה כל אינדקס חוסך.
 * **מקצה לקצה:** זמן תגובה של ה-API (ממוצע ו-p95 של 20 קריאות, אחרי קריאת חימום).
 
@@ -23,17 +23,17 @@ sqlcmd -S "(localdb)\MSSQLLocalDB" -d RequestsManagement -E -f 65001 -i docs/per
 
 | # | תרחיש | שאילתה | תוכנית בפועל | Reads | בלי אינדקס | זמן |
 |---|---|---|---|---|---|---|
-| Q1 | ללא סינון, מיון לפי תאריך | עמוד | סריקה **לאחור** של `IX_Requests_CreatedAt` – נעצרת אחרי 44 שורות, 20 Key Lookups | 187 | 1,999 + מיון 100K שורות | ‎3ms מול 162ms |
+| Q1 | ללא סינון, מיון לפי תאריך | עמוד | סריקה **לאחור** של `IX_Requests_CreatedAt` – נעצרת אחרי 20 שורות, 20 Key Lookups | 46 | 1,999 + מיון 100K שורות | ‎3ms מול 162ms |
 | | | COUNT | סריקת האינדקס הצר ביותר | 213 | | 15ms |
-| Q2 | סטטוס חדשה או ממתינה | COUNT | **Seek** על `IX_Requests_Status_CreatedAt` – שני טווחים, 30,173 שורות | **102** | 1,999 | ‎8ms |
-| | | עמוד | סריקה לאחור על `IX_Requests_CreatedAt`, 67 שורות עד שנמצאו 20 | 217 | | ‎2ms |
+| Q2 | סטטוס חדשה או ממתינה | COUNT | **Seek** על `IX_Requests_Status_CreatedAt` – שני טווחים, 30,156 שורות | **104** | 1,999 | ‎8ms |
+| | | עמוד | סריקה לאחור על `IX_Requests_CreatedAt`, 105 שורות עד שנמצאו 20 | 288 | | ‎2ms |
 | Q5 | מטפל מכיל "לוי" + בטיפול, מיון לפי עדיפות | COUNT | סריקת `IX_Requests_AssignedTo_Status` (אינדקס צר) | 370 | 1,999 | 30ms |
 | | | עמוד | סריקה מלאה + מיון 606 שורות | 1,999 | | 40ms |
 | Q6 | ארגון מתחיל ב"נגב" + רבעון ראשון 2026 | COUNT | **חיתוך אינדקסים**: Seek על `IX_Requests_OrganizationName` + Seek על `IX_Requests_CreatedAt` + Hash Join | **63** | 1,999 | 13ms |
 | | | עמוד | Seek על טווח התאריכים, 320 שורות עד שנמצאו 20 | 991 | | ‎1ms |
-| Q3 | עמוד 500 של "חדשה" | עמוד | האופטימייזר מוותר על האינדקס: סריקה מלאה + מיון 20,044 שורות | 1,999 | | **40ms** |
-| Q4 | חיפוש טקסט "היתר" | COUNT | סריקה מלאה – אין אינדקס שעוזר ל-`LIKE '%x%'` | 1,999 | 1,999 | **~350ms CPU** |
-| | | עמוד | סריקה לאחור על `IX_Requests_CreatedAt`, 337 שורות עד שנמצאו 20 | 1,044 | | ‎2ms |
+| Q3 | עמוד 500 של "חדשה" | עמוד | האופטימייזר מוותר על האינדקס: סריקה מלאה + מיון 20,025 שורות | 2,004 | | **40ms** |
+| Q4 | חיפוש טקסט "היתר" | COUNT | סריקה מלאה – אין אינדקס שעוזר ל-`LIKE '%x%'` | 2,004 | 1,999 | **~350ms CPU** |
+| | | עמוד | סריקה לאחור על `IX_Requests_CreatedAt`, 337 שורות עד שנמצאו 20 | 954 | | ‎2ms |
 
 **זמני תגובה של ה-API** (20 קריאות):
 
@@ -52,8 +52,8 @@ sqlcmd -S "(localdb)\MSSQLLocalDB" -d RequestsManagement -E -f 65001 -i docs/per
 
 | # | שאילתה | תוכנית בפועל | Reads | בלי אינדקס | זמן |
 |---|---|---|---|---|---|
-| Q7 | קבוצות סטטוס × עדיפות | סריקה של `IX_Requests_Status_CreatedAt` בלבד (Priority ו-UpdatedAt ב-INCLUDE) + Hash Aggregate | **325** | 1,999 | 46ms |
-| Q8 | Top 5 מטפלים | Seek על `IX_Requests_AssignedTo_Status` (‏AssignedTo IS NOT NULL), 43,086 שורות, Stream Aggregate בלי מיון | **370** | 1,999 | 17ms |
+| Q7 | קבוצות סטטוס × עדיפות | סריקה של `IX_Requests_Status_CreatedAt` בלבד (Priority ו-UpdatedAt ב-INCLUDE) + Hash Aggregate | **328** | 1,999 | 46ms |
+| Q8 | Top 5 מטפלים | Seek על `IX_Requests_AssignedTo_Status` (‏AssignedTo IS NOT NULL), 43,086 שורות, Stream Aggregate בלי מיון | **392** | 1,999 | 17ms |
 
 | קריאה | ממוצע | p95 |
 |---|---|---|
@@ -65,7 +65,111 @@ sqlcmd -S "(localdb)\MSSQLLocalDB" -d RequestsManagement -E -f 65001 -i docs/per
 
 ## עדכון סטטוס
 
-`UPDATE … WHERE Id = @id AND RowVersion = @expected` + הוספת שורת היסטוריה: **3 + 7 + 4 logical reads**, ‏~1ms. בדיקת הגרסה מתבצעת בתוך ה-UPDATE עצמו, על המפתח הראשי.
+`UPDATE … WHERE Id = @id AND RowVersion = @expected` + הוספת שורת היסטוריה: **3 + 7 + 4 logical reads**, ‏~1ms. בדיקת הגרסה מתבצעת בתוך ה-UPDATE עצמו: בתוכנית רואים Seek על `Id` ובדיקת `RowVersion` על אותה שורה (Q9 למטה).
+
+## תוכניות ביצוע בפועל
+
+התוכניות נשמרו עם `SET STATISTICS XML ON` (Actual Execution Plan) על 100,000 הפניות, אחרי ריצת חימום, עם ה-SQL והפרמטרים של EF Core 8 מ-[`measure.sql`](performance/measure.sql).
+קובצי `.sqlplan` נפתחים ב-SSMS או ב-Azure Data Studio (גרירה לחלון), ומציגים לכל אופרטור את השורות בפועל מול ההערכה ואת ה-logical reads.
+
+| # | שאילתה | קובץ |
+|---|---|---|
+| Q1 | עמוד ראשון ללא סינון | [`q1-list-page.sqlplan`](performance/plans/q1-list-page.sqlplan) |
+| Q1 | `COUNT(*)` ללא סינון | [`q1-count.sqlplan`](performance/plans/q1-count.sqlplan) |
+| Q2 | סינון סטטוס – COUNT | [`q2-status-count.sqlplan`](performance/plans/q2-status-count.sqlplan) |
+| Q2 | סינון סטטוס – עמוד | [`q2-status-page.sqlplan`](performance/plans/q2-status-page.sqlplan) |
+| Q3 | עמוד 500 (דפדוף עמוק) | [`q3-deep-page.sqlplan`](performance/plans/q3-deep-page.sqlplan) |
+| Q4 | חיפוש טקסט – COUNT | [`q4-search-count.sqlplan`](performance/plans/q4-search-count.sqlplan) |
+| Q4 | חיפוש טקסט – עמוד | [`q4-search-page.sqlplan`](performance/plans/q4-search-page.sqlplan) |
+| Q7 | Summary – קבוצות סטטוס × עדיפות | [`q7-summary-buckets.sqlplan`](performance/plans/q7-summary-buckets.sqlplan) |
+| Q8 | Summary – Top 5 מטפלים | [`q8-top-assignees.sqlplan`](performance/plans/q8-top-assignees.sqlplan) |
+| Q9 | UPDATE מותנה בגרסה | [`q9-conditional-update.sqlplan`](performance/plans/q9-conditional-update.sqlplan) |
+| Q9 | הוספת שורת היסטוריה | [`q9-audit-insert.sqlplan`](performance/plans/q9-audit-insert.sqlplan) |
+
+תקציר העץ של כל תוכנית (אופרטור | שורות בפועל (הערכה) | reads):
+
+```text
+Q1 עמוד ראשון – 0ms. נעצר אחרי 20 שורות; אין מיון.
+Top                                                    20
+  Nested Loops                                         20
+    Index Scan  IX_Requests_CreatedAt  BACKWARD        20 (est 20)     reads 2
+    Clustered Index Seek  PK_Requests  (Key Lookup)    20              reads 44
+
+Q1 COUNT – 14ms. סורק את האינדקס הצר ביותר, לא את הטבלה.
+Stream Aggregate                                       1
+  Index Scan  IX_Requests_CreatedAt                    100,000         reads 213
+
+Q2 COUNT סטטוס חדשה או ממתינה – 8ms. שני טווחי Seek (Merge Interval על שני הפרמטרים).
+Stream Aggregate                                       1
+  Nested Loops
+    Merge Interval ← Concatenation ← 2 × Constant Scan 2
+    Index Seek  IX_Requests_Status_CreatedAt           30,156 (est 30,173)  reads 104
+
+Q2 עמוד – 0ms. סריקה לאחור לפי תאריך ובדיקת הסטטוס בכל שורה.
+Top                                                    20
+  Nested Loops
+    Index Scan  IX_Requests_CreatedAt  BACKWARD        105 (est 66)    reads 3
+    Clustered Index Seek  PK_Requests                  20              reads 285
+
+Q3 עמוד 500 – 46ms. ל-OFFSET 9,980 האופטימייזר מעדיף סריקה + מיון על פני 10,000 Key Lookups.
+Top                                                    20
+  Sort                                                 10,000
+    Clustered Index Scan  PK_Requests                  20,025 (est 20,044)  reads 2,004
+
+Q4 COUNT חיפוש "היתר" – 343ms CPU. ‏LIKE '%x%' לא יכול להשתמש ב-Seek: כל הטבלה.
+Stream Aggregate                                       1
+  Clustered Index Scan  PK_Requests                    6,798 (est 13,192)   reads 2,004
+
+Q4 עמוד – 3ms. עוצר אחרי 337 שורות, כשנמצאו 20 התאמות.
+Top                                                    20
+  Nested Loops
+    Index Scan  IX_Requests_CreatedAt  BACKWARD        337 (est 152)   reads 3
+    Clustered Index Seek  PK_Requests                  20              reads 951
+
+Q7 Summary – קבוצות – 56ms. כל העמודות באינדקס; הטבלה לא נקראת.
+Hash Match (Aggregate)                                 12
+  Index Scan  IX_Requests_Status_CreatedAt             100,000         reads 328
+
+Q8 Summary – Top 5 מטפלים – 16ms. Seek על AssignedTo IS NOT NULL; הנתונים כבר ממוינים לפי מטפל, אין מיון לפני הקיבוץ.
+Top ← Sort (5)
+  Stream Aggregate                                     40
+    Index Seek  IX_Requests_AssignedTo_Status          43,086 (est 51,645)  reads 392
+
+Q9 UPDATE ... WHERE Id = @p2 AND RowVersion = @p3 – 0ms.
+Clustered Index Update  PK_Requests (+ שני האינדקסים שמכילים Status)    1
+  Top ← Compute Scalar
+    Clustered Index Seek  PK_Requests  Seek: Id, Predicate: RowVersion   1   reads 3
+
+Q9 INSERT היסטוריה – 0ms. כולל בדיקת ה-FK לפנייה.
+Assert
+  Nested Loops
+    Clustered Index Insert  PK_RequestStatusHistory    1               reads 2
+    Clustered Index Seek  PK_Requests  (FK)            1               reads 3
+```
+
+### לפני ואחרי שלושת התיקונים
+
+שלושת התיקונים שבסעיף הבא, כל אחד עם שתי תוכניות על אותם נתונים. התוכניות של OPENJSON נשמרו על בסיס הנתונים של האפליקציה.
+לפרגמנטציה ולאינדקס המכסה נוצר עותק זמני של הטבלה עם 100,000 השורות, נטען בדיוק כמו ב-Seeder (‏`SqlBulkCopy`, ‏TableLock, מנות של 10,000, האינדקסים קיימים מראש) ועם האינדקס כפי שהיה במיגרציה הראשונה.
+
+| תיקון | לפני | אחרי |
+|---|---|---|
+| 1. OPENJSON → שרשרת OR | [`status-openjson-count`](performance/plans/before-after/status-openjson-count.sqlplan): ‏Index Scan על כל 100,000 השורות + Merge Join מול ה-JSON – **328 reads**, ‏16ms | [`status-or-chain-count`](performance/plans/before-after/status-or-chain-count.sqlplan): ‏Index Seek לשני הטווחים, 30,156 שורות – **104 reads**, ‏6ms |
+| 2. פרגמנטציה → REBUILD | [`fragmented-q1-count`](performance/plans/before-after/fragmented-q1-count.sqlplan): ‏**364 reads**; ‏[`fragmented-q2-status-count`](performance/plans/before-after/fragmented-q2-status-count.sqlplan): ‏**128** | [`rebuilt-q1-count`](performance/plans/before-after/rebuilt-q1-count.sqlplan): ‏**213 reads**; ‏[`rebuilt-q2-status-count`](performance/plans/before-after/rebuilt-q2-status-count.sqlplan): ‏**77** |
+| 3. ‏`UpdatedAt` ב-INCLUDE | [`summary-index-without-updatedat`](performance/plans/before-after/summary-index-without-updatedat.sqlplan): ‏**Clustered Index Scan** של כל הטבלה – **1,999 reads** | [`summary-index-covering`](performance/plans/before-after/summary-index-covering.sqlplan): ‏Index Scan של האינדקס בלבד – **324 reads** |
+
+**הערות:**
+* **תיקון 2.** צורת התוכנית זהה לפני ואחרי; רק מספר הדפים משתנה. מדידת הפרגמנטציה באותו עותק:
+
+  | אינדקס | אחרי הטעינה | אחרי REBUILD |
+  |---|---|---|
+  | `IX_Requests_CreatedAt` | 97.2% פרגמנטציה, 58% מילוי, 362 דפים | 0%, 99.5%, 211 דפים |
+  | `IX_Requests_Status_CreatedAt` | 98.7%, 60%, 389 דפים | 0%, 99.9%, 235 דפים |
+  | `IX_Requests_OrganizationName` | 99.1%, 66%, 895 דפים | 0%, 99.6%, 591 דפים |
+  | `IX_Requests_AssignedTo_Status` | 97.5%, 72%, 527 דפים | 0%, 99.8%, 382 דפים |
+
+  ה-reads למעלה נמדדו עם Cache חם. מקריאה מהדיסק המחיר גבוה יותר, כי דפים מפוצלים לא יושבים ברצף ו-Read-ahead פחות יעיל. את זה לא מדדתי.
+* **תיקון 3.** זמן ה-CPU כמעט זהה (50–62ms), כי בשני המקרים מסכמים 100,000 שורות. החיסכון הוא ב-IO: פי 6 פחות דפים, ופחות לחץ על ה-Buffer Pool.
 
 ## מה נמצא ותוקן במהלך המדידות
 
@@ -73,14 +177,14 @@ sqlcmd -S "(localdb)\MSSQLLocalDB" -d RequestsManagement -E -f 65001 -i docs/per
 
    | COUNT של סטטוס חדשה + ממתינה | Reads | זמן |
    |---|---|---|
-   | `OPENJSON` (ברירת המחדל של EF Core 8) | 325 | 16–20ms |
-   | `Status = @p0 OR Status = @p1` (התיקון) | **102** | 8ms |
+   | `OPENJSON` (ברירת המחדל של EF Core 8) | 328 | 16ms |
+   | `Status = @p0 OR Status = @p1` (התיקון) | **104** | 6ms |
 
    התיקון: ב-Repository נבנה ביטוי `שדה = @p0 OR שדה = @p1` לסינוני הסטטוס והעדיפות. כל ערך נשאר פרמטר, כך שהתוכנית נשמרת ב-Cache של SQL Server. ב-Bulk, ‏`ids.Contains` נשאר עם `OPENJSON` – עד 100 מזהים, Join על המפתח הראשי, וזה המבנה הנכון שם.
 
-2. **פרגמנטציה אחרי טעינה מרוכזת (תוקן).** ה-Seeder מכניס את השורות לפי סדר ה-Id, אבל האינדקסים המשניים ממוינים לפי עמודות אחרות, ולכן נבנו בפיצולי דפים: **95–99% פרגמנטציה ו-56–76% מילוי**. אחרי `ALTER INDEX ALL … REBUILD` בסוף ה-Seed: ‏0% פרגמנטציה, 99% מילוי, והאינדקסים קטנו (למשל `IX_Requests_CreatedAt`: ‏675 → 211 דפים).
+2. **פרגמנטציה אחרי טעינה מרוכזת (תוקן).** ה-Seeder מכניס את השורות לפי סדר ה-Id, אבל האינדקסים המשניים ממוינים לפי עמודות אחרות, ולכן נבנו בפיצולי דפים: **97–99% פרגמנטציה ו-58–72% מילוי**. אחרי `ALTER INDEX ALL … REBUILD` בסוף ה-Seed: ‏0% פרגמנטציה, 99% מילוי, והאינדקסים קטנו (למשל `IX_Requests_CreatedAt`: ‏362 → 211 דפים). המספרים משחזור של אותה טעינה – ראו [לפני ואחרי](#לפני-ואחרי-שלושת-התיקונים).
 
-3. **אינדקס מכסה ל-Summary (תוקן).** ה-Summary החדש סוכם גם את `CreatedAt` ואת `UpdatedAt`. בלי `UpdatedAt` ב-INCLUDE של `IX_Requests_Status_CreatedAt`, ‏SQL Server סרק את כל הטבלה. אחרי ההוספה: **2,178 → 324 reads**. אין עלות כתיבה נוספת: ‏`UpdatedAt` משתנה באותו UPDATE כמו `Status`, שכבר מעדכן את האינדקס הזה.
+3. **אינדקס מכסה ל-Summary (תוקן).** ה-Summary החדש סוכם גם את `CreatedAt` ואת `UpdatedAt`. בלי `UpdatedAt` ב-INCLUDE של `IX_Requests_Status_CreatedAt`, ‏SQL Server סרק את כל הטבלה. אחרי ההוספה: **1,999 → 324 reads** (סריקת כל הטבלה → סריקת האינדקס בלבד). אין עלות כתיבה נוספת: ‏`UpdatedAt` משתנה באותו UPDATE כמו `Status`, שכבר מעדכן את האינדקס הזה.
 
 ## האינדקסים ולמה
 
@@ -88,8 +192,8 @@ sqlcmd -S "(localdb)\MSSQLLocalDB" -d RequestsManagement -E -f 65001 -i docs/per
 |---|---|---|---|
 | `PK_Requests` (Clustered) | `Id` | שליפה ועדכון לפי מזהה, Key Lookup | עדכון: 3 reads |
 | `IX_Requests_CreatedAt` | `CreatedAt` | מיון ברירת המחדל וטווח תאריכים: "20 האחרונות" בלי למיין 100K שורות | Q1: ‏3ms מול 162ms |
-| `IX_Requests_Status_CreatedAt` | `Status, CreatedAt` INCLUDE `Priority, UpdatedAt` | הסינון הנפוץ ביותר, ומכסה את כל שאילתת הקבוצות של ה-Summary | Q2 COUNT: ‏102 מול 1,999; ‏Q7: ‏325 מול 1,999 |
-| `IX_Requests_AssignedTo_Status` | `AssignedTo, Status` | Top מטפלים; סינון לפי מטפל סורק אותו במקום את הטבלה | Q8: ‏370 מול 1,999 |
+| `IX_Requests_Status_CreatedAt` | `Status, CreatedAt` INCLUDE `Priority, UpdatedAt` | הסינון הנפוץ ביותר, ומכסה את כל שאילתת הקבוצות של ה-Summary | Q2 COUNT: ‏104 מול 1,999; ‏Q7: ‏328 מול 1,999 |
+| `IX_Requests_AssignedTo_Status` | `AssignedTo, Status` | Top מטפלים; סינון לפי מטפל סורק אותו במקום את הטבלה | Q8: ‏392 מול 1,999 |
 | `IX_Requests_OrganizationName` | `OrganizationName` | סינון ארגון לפי תחילית (`LIKE 'abc%'`) – Seek | Q6: ‏63 מול 1,999 |
 | `IX_RequestStatusHistory_RequestId_ChangedAt` | `RequestId, ChangedAt` | היסטוריה של פנייה, מהחדש לישן; משמש גם את ה-FK | – |
 
