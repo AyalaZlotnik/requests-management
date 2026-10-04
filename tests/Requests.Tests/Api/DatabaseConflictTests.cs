@@ -74,13 +74,20 @@ public class DatabaseConflictTests(GatedApiFactory factory) : IClassFixture<Gate
         bulk.Results.Where(r => changedMeanwhile.Contains(r.Id)).Should().OnlyContain(r => r.Outcome == BulkItemOutcome.Conflict);
         bulk.Results.Where(r => !changedMeanwhile.Contains(r.Id)).Should().OnlyContain(r => r.Outcome == BulkItemOutcome.Updated);
 
-        var stored = await factory.QueryDbAsync(db => db.Requests.AsNoTracking().ToDictionaryAsync(r => r.Id, r => r.Status));
+        var stored = await factory.QueryDbAsync(db => db.Requests.AsNoTracking().ToDictionaryAsync(r => r.Id, r => r));
         var audit = await factory.QueryDbAsync(db => db.StatusHistory.AsNoTracking().ToListAsync());
         foreach (var request in seeded)
         {
             var winner = changedMeanwhile.Contains(request.Id) ? "single" : "bulk";
-            stored[request.Id].Should().Be(winner == "single" ? RequestStatus.Waiting : RequestStatus.InProgress);
+            stored[request.Id].Status.Should().Be(winner == "single" ? RequestStatus.Waiting : RequestStatus.InProgress);
             audit.Where(a => a.RequestId == request.Id).Should().ContainSingle().Which.ChangedBy.Should().Be(winner);
+        }
+
+        // The versions returned for the saved rows are the ones now stored – the client can use them for its next update.
+        foreach (var result in bulk.Results)
+        {
+            var expected = changedMeanwhile.Contains(result.Id) ? null : Convert.ToBase64String(stored[result.Id].RowVersion);
+            result.RowVersion.Should().Be(expected, $"request {result.Id}");
         }
     }
 }
