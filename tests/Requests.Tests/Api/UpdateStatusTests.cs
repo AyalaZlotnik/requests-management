@@ -63,8 +63,11 @@ public class UpdateStatusTests(RequestsApiFactory factory) : IClassFixture<Reque
         var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
         var current = problem.GetProperty("currentState");
         current.GetProperty("id").GetInt32().Should().Be(request.Id);
+        // Enums are names in every response, including error bodies – the client compares them as strings.
+        current.GetProperty("status").GetString().Should().Be("InProgress");
         var lastChange = problem.GetProperty("lastChange");
         lastChange.GetProperty("changedBy").GetString().Should().Be("יוסי כהן");
+        lastChange.GetProperty("newStatus").GetString().Should().Be("InProgress");
 
         // Read straight from the database: the second user's change must not have been written.
         var stored = await factory.QueryDbAsync(db => db.Requests.AsNoTracking().SingleAsync(r => r.Id == request.Id));

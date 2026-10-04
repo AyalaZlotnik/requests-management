@@ -5,14 +5,18 @@ using Requests.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Enums travel as names. Controllers and Problem Details (error bodies) use two different JSON
+// serializers, so both get the same converter – otherwise 409 bodies would contain "status": 1.
+var enumsAsNames = new JsonStringEnumConverter(allowIntegerValues: false);
 builder.Services
     .AddControllers()
     .AddJsonOptions(o =>
     {
-        o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(allowIntegerValues: false));
+        o.JsonSerializerOptions.Converters.Add(enumsAsNames);
         // Don't echo internal type names from deserialization errors back to the client.
         o.AllowInputFormatterExceptionMessages = false;
     });
+builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(enumsAsNames));
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddEndpointsApiExplorer();
