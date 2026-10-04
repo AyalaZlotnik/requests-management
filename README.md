@@ -8,6 +8,94 @@
 | [docs/WORK_PLAN.md](docs/WORK_PLAN.md) | פירוק האפיון למשימות: תוצרים, תלויות, סדר ביצוע, הערכת מאמץ, ההחלטות שהתקבלו |
 | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | מדידות על 100,000 פניות: תוכניות ביצוע, אינדקסים, צווארי בקבוק ושיפורים |
 | [docs/performance/measure.sql](docs/performance/measure.sql) | סקריפט המדידה |
+| [docs/performance/plans](docs/performance/plans) | תוכניות ביצוע בפועל (`.sqlplan`), כולל לפני/אחרי לכל תיקון |
+
+## מדריך לבודק – 5 דקות
+
+### הרצה (דקה וחצי)
+
+```bash
+dotnet run --project src/Requests.Api            # טרמינל 1 – בהרצה הראשונה: בסיס נתונים + 100,000 פניות (~15 שניות)
+cd src/requests-ui && npm ci && npm start         # טרמינל 2 – http://localhost:4200
+```
+
+פרטים ודרישות מוקדמות ב[הרצה](#הרצה); אם משהו לא עולה – [פתרון תקלות](#פתרון-תקלות).
+
+### מסלול בדיקה בממשק (3 דקות)
+
+| # | מה עושים | מה אמור לקרות | דרישה |
+|---|---|---|---|
+| 1 | פותחים את http://localhost:4200 | 100,000 פניות, 20 בעמוד; רצועת סיכום עם סה"כ, "פתוחות מעל 7 ימים" וספירה לכל סטטוס | R1, D |
+| 2 | מקלידים "היתר" בחיפוש, עם DevTools → Network פתוח | בקשה אחת אחרי שמפסיקים להקליד (350ms); בקשה קודמת שעוד רצה מסומנת `(canceled)`. הרשימה והסיכום מתעדכנים יחד | R1, R5 |
+| 3 | לוחצים על "ממתינה" ברצועת הסיכום, ממיינים לפי עמודה, עוברים לעמוד 3 ולוחצים F5 | הסינון, המיון והעמוד נשמרים ב-URL, והרענון מציג אותה תצוגה | R1, R5 |
+| 4 | פותחים פנייה ומעדכנים סטטוס | הודעת הצלחה, שורה חדשה בהיסטוריה, והרשימה והסיכום מתעדכנים | R2, R3 |
+| 5 | **409:** מעתיקים את ה-URL של הפנייה הפתוחה (כולל `?id=`) ללשונית שנייה. מעדכנים בלשונית אחת, ואז בשנייה (בלי לרענן) | בלשונית השנייה נפתח חלון: מה המצב עכשיו, מי שינה ומתי, ו"להעביר בכל זאת" / "הצגת המצב העדכני". שום דבר לא נדרס | R2, R5 |
+| 6 | **Bulk:** בוחרים כמה פניות. בלשונית אחרת משנים אחת מהן. חוזרים ומפעילים "עדכון כל הנבחרות" | "עודכנו N פניות; לא עודכנה פנייה אחת", עם קישור לפנייה שלא עודכנה ("עודכנה בינתיים על ידי משתמש אחר") | R4 |
+| 7 | עוצרים את השרת (Ctrl+C) ומשנים סינון; מפעילים שוב ולוחצים "ניסיון חוזר" | באנר "אין חיבור לשרת" אחד, ואחרי החזרה – הכול נטען מחדש | R5 |
+| 8 | http://localhost:5080/swagger | כל ה-Endpoints, כולל קודי השגיאה | R11 |
+
+### לראות 409 משתי פקודות
+
+שני "משתמשים" שולחים עדכון עם אותו `ETag` (Bash / Git Bash):
+
+```bash
+ETAG=$(curl -si http://localhost:5080/api/requests/1 | grep -i '^etag:' | cut -d' ' -f2 | tr -d '\r')
+
+# משתמש א' – מצליח (200)
+curl -s -o /dev/null -w "A: %{http_code}\n" -X PATCH http://localhost:5080/api/requests/1/status \
+  -H "If-Match: $ETAG" -H "Content-Type: application/json" -d '{"status":"InProgress","changedBy":"Dana"}'
+
+# משתמש ב' – אותו ETag, שכבר לא עדכני (409)
+curl -s -w "\nB: %{http_code}\n" -X PATCH http://localhost:5080/api/requests/1/status \
+  -H "If-Match: $ETAG" -H "Content-Type: application/json" -d '{"status":"Waiting","changedBy":"Yossi"}'
+```
+
+תשובה אמיתית (מקוצרת):
+
+```text
+A: 200
+{"title":"Concurrency conflict","status":409,"detail":"Request 1 was modified by another user. Reload it and try again.",
+ "currentState":{"id":1,"status":"InProgress","rowVersion":"AAAAAAAJy9E=","allowedNextStatuses":["Waiting","Completed"],…},
+ "lastChange":{"previousStatus":"Completed","newStatus":"InProgress","changedAt":"2026-10-04T18:37:15.906Z","changedBy":"Dana"}}
+B: 409
+```
+
+פנייה 1 מתחילה ב"הושלמה" בנתוני ה-Seed, ולכן "בטיפול" מותר לה. אם היא כבר שונתה, בחרו סטטוס מתוך `allowedNextStatuses` שב-GET. בלי `If-Match` מתקבל 428, ועם `If-Match: *` מתקבל 400.
+
+### בדיקות אוטומטיות
+
+```bash
+dotnet test                                         # 75 בדיקות שרת – Integration מול SQL Server (LocalDB)
+cd src/requests-ui && npx ng test --watch=false     # 43 בדיקות לקוח
+```
+
+### איפה כל דרישה
+
+| דרישה | קוד | בדיקות | תיעוד |
+|---|---|---|---|
+| R1 שליפה: דפדוף, סינון, חיפוש, מיון, Aggregations, ולידציה, Cancellation | [`RequestRepository`](src/Requests.Infrastructure/Persistence/RequestRepository.cs), [`RequestSearchQuery`](src/Requests.Application/Requests/Contracts/RequestSearchQuery.cs), [`RequestSummaryService`](src/Requests.Application/Requests/Services/RequestSummaryService.cs) | `SearchRequestsTests`, ‏`SummaryTests` | [API](#api) |
+| R2 עדכון סטטוס, מעברים, Optimistic Concurrency | [`RequestCommandService`](src/Requests.Application/Requests/Services/RequestCommandService.cs), [`StatusTransitions`](src/Requests.Application/Requests/Entities/StatusTransitions.cs), [`EntityTags`](src/Requests.Api/Http/EntityTags.cs), [`GlobalExceptionHandler`](src/Requests.Api/ErrorHandling/GlobalExceptionHandler.cs) | `UpdateStatusTests`, ‏`DatabaseConflictTests`, ‏`StatusTransitionTests` | [Concurrency](#עדכון-סטטוס-ו-concurrency) |
+| R3 היסטוריה (Audit) | [`RequestStatusHistory`](src/Requests.Application/Requests/Entities/RequestStatusHistory.cs), ‏`GET /api/requests/{id}/history` | `HistoryTests`, וכל בדיקת עדכון בודקת את שורת ההיסטוריה | [API](#api) |
+| R4 Bulk עד 100, הצלחה חלקית | [`RequestCommandService`](src/Requests.Application/Requests/Services/RequestCommandService.cs) (`BulkUpdateStatusAsync`), [`UpdateStatusDtos`](src/Requests.Application/Requests/Contracts/UpdateStatusDtos.cs) | `BulkUpdateStatusTests`, ‏`BulkUpdateServiceTests`, ‏`ConcurrencyTests`, ‏`DatabaseConflictTests` | [Bulk](#עדכון-מרוכז-bulk--הצלחה-חלקית) |
+| R5 Angular | [`requests-list.store.ts`](src/requests-ui/src/app/features/requests/requests-list.store.ts) (‏URL, ‏`switchMap`), [`request-filters`](src/requests-ui/src/app/features/requests/request-filters.component.ts) (Debounce), [`request-details`](src/requests-ui/src/app/features/requests/request-details.component.ts) + [`conflict-dialog`](src/requests-ui/src/app/features/requests/conflict-dialog.component.ts) (409) | `requests-list.store.spec`, ‏`request-filters.component.spec`, ‏`request-details.component.spec`, ‏`requests-page.component.spec` | [מבנה – הלקוח](#מבנה-הפתרון) |
+| R6 ביצועים על 100K | [`ServiceRequestConfiguration`](src/Requests.Infrastructure/Persistence/Configurations/ServiceRequestConfiguration.cs) (אינדקסים) | [`measure.sql`](docs/performance/measure.sql), [`plans/`](docs/performance/plans) | [PERFORMANCE.md](docs/PERFORMANCE.md) |
+| R7 Cache | [`MemorySummaryCache`](src/Requests.Infrastructure/Caching/MemorySummaryCache.cs), [`RequestSummaryService`](src/Requests.Application/Requests/Services/RequestSummaryService.cs) | `SummaryCacheTests` | [Cache](#cache) |
+| R8 בדיקות, כולל Integration ו-Concurrency | [`tests/Requests.Tests`](tests/Requests.Tests), ‏`*.spec.ts` | 75 + 43 | [בדיקות אוטומטיות](#בדיקות-אוטומטיות) |
+| R9 תכנון | – | – | [WORK_PLAN.md](docs/WORK_PLAN.md) |
+| R10 איכות קוד, שגיאות, Logging | [`Program.cs`](src/Requests.Api/Program.cs), [`RequestRejectionLog`](src/Requests.Api/ErrorHandling/RequestRejectionLog.cs), [`Directory.Build.props`](Directory.Build.props) (Analyzers כשגיאות) | `Invalid_body_returns_400`, ‏`Unusable_if_match_returns_400_and_changes_nothing` | [Logging](#logging) |
+| R11 תיעוד | – | – | README, ‏PERFORMANCE.md, ‏WORK_PLAN.md |
+| D ‏100K רשומות, יצירה חוזרת | [`DataSeeder`](src/Requests.Infrastructure/Persistence/DataSeeder.cs), ‏`dotnet run -- seed` | – | [הרצה](#הרצה) |
+
+### פתרון תקלות
+
+| תקלה | פתרון |
+|---|---|
+| `A network-related or instance-specific error` / ‏LocalDB לא מותקן | `sqllocaldb info` אמור להציג `MSSQLLocalDB`. אם לא – להתקין [SQL Server Express LocalDB](https://learn.microsoft.com/sql/database-engine/configure-windows/sql-server-express-localdb), או להשתמש ב-SQL Server אחר (שורה אחרונה). |
+| LocalDB קיים אבל לא עולה | `sqllocaldb stop MSSQLLocalDB` ואז `sqllocaldb start MSSQLLocalDB`. |
+| פורט 4200 תפוס | `npm start -- --port 4300` ולפתוח http://localhost:4300. ה-Proxy ל-API עובד מכל פורט. |
+| פורט 5080 תפוס | לעצור את התהליך שתופס אותו, או להריץ `dotnet run --project src/Requests.Api -- --urls http://localhost:5081` ולעדכן את `target` ב-[`proxy.conf.json`](src/requests-ui/proxy.conf.json). |
+| SQL Server אחר (Express, Developer, Docker) | `ConnectionStrings__RequestsDb="Server=.\SQLEXPRESS;Database=RequestsManagement;Trusted_Connection=True;TrustServerCertificate=True"` לפני `dotnet run`. לבדיקות: ‏`REQUESTS_TEST_SERVER=.\SQLEXPRESS` (שם השרת בלבד). |
+| הממשק מציג "אין חיבור לשרת" | השרת לא רץ או עדיין יוצר את הנתונים בהרצה הראשונה – לחכות לשורה `Now listening on` וללחוץ "ניסיון חוזר". |
 
 ## טכנולוגיות וגרסאות
 
@@ -50,8 +138,8 @@ dotnet run --project src/Requests.Api -- seed 250000   # כמות אחרת
 **בדיקות:**
 
 ```bash
-dotnet test                                    # 66 בדיקות שרת
-cd src/requests-ui && npx ng test --watch=false   # 36 בדיקות לקוח
+dotnet test                                    # 75 בדיקות שרת
+cd src/requests-ui && npx ng test --watch=false   # 43 בדיקות לקוח
 ```
 
 **SQL Server אחר:** ב-`src/Requests.Api/appsettings.json` (‏`ConnectionStrings:RequestsDb`) או במשתנה סביבה `ConnectionStrings__RequestsDb`. לבדיקות: `REQUESTS_TEST_SERVER` (שם השרת בלבד; כל מחלקת בדיקות יוצרת ומוחקת בסיס נתונים משלה).
