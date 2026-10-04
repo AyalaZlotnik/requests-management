@@ -14,6 +14,7 @@ import { conflictDetails, errorMessage } from '../../core/api/http-error';
 import { CurrentUser } from '../../core/current-user.service';
 import { STATUS_LABELS } from '../../core/i18n/labels';
 import { RequestDetails, RequestStatus, StatusHistoryEntry } from '../../core/models/request.models';
+import { IconComponent } from '../../core/ui/icon.component';
 import { ConflictChoice, ConflictDialogComponent, ConflictDialogData } from './conflict-dialog.component';
 import { PriorityLabelPipe, StatusLabelPipe } from './status-label.pipe';
 
@@ -32,36 +33,46 @@ type Loaded = { details: VersionedRequest; history: StatusHistoryEntry[] };
     MatFormFieldModule,
     MatSelectModule,
     MatProgressBarModule,
+    IconComponent,
     DatePipe,
     StatusLabelPipe,
     PriorityLabelPipe,
   ],
   template: `
     <aside class="details" aria-label="פרטי פנייה">
-      <header>
-        <h2>פנייה #{{ requestId() }}</h2>
-        <button mat-button type="button" (click)="closed.emit()" aria-label="סגירת פרטי הפנייה">סגירה</button>
+      <header class="details-header">
+        <div class="details-heading">
+          <span class="muted small">פנייה #{{ requestId() }}</span>
+          @if (data(); as d) {
+            <h2>{{ d.details.request.title }}</h2>
+            <div class="details-meta">
+              <span class="badge" [attr.data-status]="d.details.request.status">{{ d.details.request.status | statusLabel }}</span>
+              <span>{{ d.details.request.organizationName }}</span>
+            </div>
+          }
+        </div>
+        <button mat-icon-button type="button" (click)="closed.emit()" aria-label="סגירת פרטי הפנייה">
+          <app-icon name="close" />
+        </button>
       </header>
 
       @if (loadError()) {
         <p class="error-text" role="alert">{{ loadError() }}</p>
       } @else if (data(); as d) {
-        <dl>
-          <dt>כותרת</dt><dd>{{ d.details.request.title }}</dd>
-          <dt>ארגון</dt><dd>{{ d.details.request.organizationName }}</dd>
-          <dt>סטטוס</dt>
-          <dd><span class="badge" [attr.data-status]="d.details.request.status">{{ d.details.request.status | statusLabel }}</span></dd>
-          <dt>עדיפות</dt><dd>{{ d.details.request.priority | priorityLabel }}</dd>
-          <dt>מטפל/ת</dt><dd>{{ d.details.request.assignedTo ?? '—' }}</dd>
-          <dt>נוצרה</dt><dd>{{ d.details.request.createdAt | date: 'dd/MM/yyyy HH:mm' }}</dd>
-          <dt>עודכנה</dt><dd>{{ d.details.request.updatedAt | date: 'dd/MM/yyyy HH:mm' }}</dd>
-        </dl>
+        <section class="details-section">
+          <dl>
+            <dt>עדיפות</dt><dd><span class="priority" [attr.data-priority]="d.details.request.priority">{{ d.details.request.priority | priorityLabel }}</span></dd>
+            <dt>מטפל/ת</dt><dd>{{ d.details.request.assignedTo ?? 'לא שויך' }}</dd>
+            <dt>נוצרה</dt><dd>{{ d.details.request.createdAt | date: 'dd/MM/yyyy HH:mm' }}</dd>
+            <dt>עודכנה</dt><dd>{{ d.details.request.updatedAt | date: 'dd/MM/yyyy HH:mm' }}</dd>
+          </dl>
+        </section>
 
-        <section class="status-change">
+        <section class="details-section status-change">
           <h3>שינוי סטטוס</h3>
           @if (d.details.request.allowedNextStatuses.length) {
             <div class="row">
-              <mat-form-field subscriptSizing="dynamic">
+              <mat-form-field class="grow">
                 <mat-label>סטטוס חדש</mat-label>
                 <mat-select [(ngModel)]="nextStatus" [disabled]="saving()">
                   @for (s of d.details.request.allowedNextStatuses; track s) {
@@ -84,13 +95,18 @@ type Loaded = { details: VersionedRequest; history: StatusHistoryEntry[] };
           }
         </section>
 
-        <section>
+        <section class="details-section">
           <h3>היסטוריית שינויים</h3>
-          <ol class="history">
+          <ol class="timeline">
             @for (h of d.history; track h.id) {
               <li>
-                <span>{{ h.previousStatus | statusLabel }} ← <strong>{{ h.newStatus | statusLabel }}</strong></span>
-                <span class="muted small">{{ h.changedBy }} · {{ h.changedAt | date: 'dd/MM/yyyy HH:mm:ss' }}</span>
+                <span class="timeline-dot" [attr.data-status]="h.newStatus" aria-hidden="true"></span>
+                <div class="timeline-change">
+                  <span class="badge" [attr.data-status]="h.previousStatus">{{ h.previousStatus | statusLabel }}</span>
+                  <span class="muted" aria-label="אל">←</span>
+                  <span class="badge" [attr.data-status]="h.newStatus">{{ h.newStatus | statusLabel }}</span>
+                </div>
+                <div class="muted small">{{ h.changedBy }} · {{ h.changedAt | date: 'dd/MM/yyyy HH:mm' }}</div>
               </li>
             } @empty {
               <li class="muted">עדיין לא בוצעו שינויי סטטוס.</li>
