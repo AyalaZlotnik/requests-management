@@ -1,108 +1,144 @@
-# ביצועים – מדידה וניתוח על 100,000 רשומות
+# ביצועים – מדידה וניתוח על 100,000 פניות
 
-כל המספרים כאן נמדדו בפועל על הנתונים שנוצרים ע"י `seed` (100,000 פניות), על SQL Server LocalDB 2019 במחשב פיתוח.
-סקריפט המדידה נמצא ב-[`performance/measure.sql`](performance/measure.sql) וניתן להריץ אותו מחדש:
+כל המספרים במסמך נמדדו בפועל על 100,000 הפניות שנוצרות בהרצה הראשונה (או ב-`dotnet run -- seed`),
+על SQL Server LocalDB 2019 במחשב פיתוח, עם EF Core 8.
+
+סקריפט המדידה: [`performance/measure.sql`](performance/measure.sql) – אפשר להריץ אותו שוב:
 
 ```bash
-sqlcmd -S "(localdb)\MSSQLLocalDB" -d RequestsManagement -E -i docs/performance/measure.sql
+sqlcmd -S "(localdb)\MSSQLLocalDB" -d RequestsManagement -E -f 65001 -i docs/performance/measure.sql
 ```
 
-**שיטה**
+## שיטה
 
-* ה-SQL נלקח מלוג הפקודות של EF Core (`Microsoft.EntityFrameworkCore.Database.Command=Information`) ורץ דרך `sp_executesql` עם פרמטרים – בדיוק כמו באפליקציה, כך שה-Plan זהה.
-* המדד העיקרי: **Logical reads** (`SET STATISTICS IO`) – יציב ולא תלוי בעומס המחשב. בנוסף CPU/Elapsed (`SET STATISTICS TIME`) ו-Execution Plan בפועל (`SET STATISTICS PROFILE`).
-* כל שאילתה רצה פעמיים: **עם האינדקסים** ו-**בלי** (רמז `WITH (INDEX(1))` שמכריח Clustered Index Scan) – כך רואים מה כל אינדקס חוסך בפועל.
-* בנוסף נמדד זמן תגובה מקצה לקצה של ה-API (‏`curl`, ממוצע של 20 קריאות, Cache חם של SQL).
+* **ה-SQL הוא בדיוק מה ש-EF Core 8 שולח.** הוא נלקח מלוג הפקודות (`Microsoft.EntityFrameworkCore.Database.Command=Information`) ורץ דרך `sp_executesql` עם פרמטרים, כך שתוכנית הביצוע זהה לאפליקציה.
+* **מדד ראשי – Logical reads** (`SET STATISTICS IO`): לא תלוי בעומס על המחשב. בנוסף CPU/Elapsed (`SET STATISTICS TIME`) ותוכנית ביצוע בפועל (`SET STATISTICS PROFILE`, כולל מספר השורות שעברו בכל אופרטור).
+* **עם אינדקס מול בלי:** כל שאילתה רצה גם עם `WITH (INDEX(1))`, שמכריח סריקה של כל הטבלה – כך רואים מה כל אינדקס חוסך.
+* **מקצה לקצה:** זמן תגובה של ה-API (ממוצע ו-p95 של 20 קריאות, אחרי קריאת חימום).
 
-## שתי הפעולות המרכזיות שנבחנו
+## הפעולה הראשונה: `GET /api/requests` – רשימה עם סינון, מיון ודפדוף
 
-### 1. `GET /api/requests` – חיפוש/סינון/מיון/דפדוף
+כל קריאה מריצה שתי שאילתות: `COUNT(*)` עם אותם סינונים (בשביל מספר העמודים) ו-`ORDER BY … OFFSET … FETCH` לעמוד אחד.
+הטבלה כולה היא 1,999 דפים; כל מספר קטן מזה הוא קריאה חלקית.
 
-כל קריאה מריצה שתי שאילתות: `COUNT(*)` עם אותם סינונים (לצורך מספר העמודים) ו-`ORDER BY … OFFSET … FETCH` לעמוד אחד. שום דבר לא נטען לזיכרון מעבר ל-20–100 שורות העמוד.
+| # | תרחיש | שאילתה | תוכנית בפועל | Reads | בלי אינדקס | זמן |
+|---|---|---|---|---|---|---|
+| Q1 | ללא סינון, מיון לפי תאריך | עמוד | סריקה **לאחור** של `IX_Requests_CreatedAt` – נעצרת אחרי 44 שורות, 20 Key Lookups | 187 | 1,999 + מיון 100K שורות | ‎3ms מול 162ms |
+| | | COUNT | סריקת האינדקס הצר ביותר | 213 | | 15ms |
+| Q2 | סטטוס חדשה או ממתינה | COUNT | **Seek** על `IX_Requests_Status_CreatedAt` – שני טווחים, 30,173 שורות | **102** | 1,999 | ‎8ms |
+| | | עמוד | סריקה לאחור על `IX_Requests_CreatedAt`, 67 שורות עד שנמצאו 20 | 217 | | ‎2ms |
+| Q5 | מטפל מכיל "לוי" + בטיפול, מיון לפי עדיפות | COUNT | סריקת `IX_Requests_AssignedTo_Status` (אינדקס צר) | 370 | 1,999 | 30ms |
+| | | עמוד | סריקה מלאה + מיון 606 שורות | 1,999 | | 40ms |
+| Q6 | ארגון מתחיל ב"נגב" + רבעון ראשון 2026 | COUNT | **חיתוך אינדקסים**: Seek על `IX_Requests_OrganizationName` + Seek על `IX_Requests_CreatedAt` + Hash Join | **63** | 1,999 | 13ms |
+| | | עמוד | Seek על טווח התאריכים, 320 שורות עד שנמצאו 20 | 991 | | ‎1ms |
+| Q3 | עמוד 500 של "חדשה" | עמוד | האופטימייזר מוותר על האינדקס: סריקה מלאה + מיון 20,044 שורות | 1,999 | | **40ms** |
+| Q4 | חיפוש טקסט "היתר" | COUNT | סריקה מלאה – אין אינדקס שעוזר ל-`LIKE '%x%'` | 1,999 | 1,999 | **~350ms CPU** |
+| | | עמוד | סריקה לאחור על `IX_Requests_CreatedAt`, 337 שורות עד שנמצאו 20 | 1,044 | | ‎2ms |
 
-| תרחיש | שאילתה | Plan בפועל (עם אינדקסים) | Logical reads עם אינדקס | Logical reads בלי (Scan) | זמן |
-|---|---|---|---|---|---|
-| Q1 עמוד ראשון, מיון ברירת מחדל `CreatedAt DESC` | עמוד | Index Scan **ORDERED BACKWARD** על `IX_Requests_CreatedAt` → נעצר אחרי 20 שורות + 20 Key Lookups | **66** | 2,405 (+Sort של 100K שורות) | ‎~0ms מול 162ms |
-| | COUNT | Index Scan על האינדקס הצר ביותר | 614 | 2,405 | ‎<11ms |
-| Q2 `status IN (New, Waiting)` | COUNT | **Index Seek** על `IX_Requests_Status_CreatedAt` (שני טווחים) | **213** | 2,405 | 3ms מול 13ms |
-| | עמוד | Scan אחורה על `IX_Requests_CreatedAt` עם סינון – נקראו 78 שורות כדי למצוא 20 | 242 | 2,405 + Sort | ‎~0ms מול 57ms |
-| Q5 `assignedTo=agent07 AND status=InProgress` | COUNT | **Index Seek** על `IX_Requests_AssignedTo_Status` | **10** | 2,405 | ‎~0ms מול 14ms |
-| | עמוד (מיון לפי Priority) | Seek (601 שורות) + Lookups + Sort קטן | 1,851 | – | 2ms |
-| Q6 ארגון מתחיל ב-`Negev` + טווח תאריכים | COUNT | **Index Intersection**: Seek על `IX_Requests_OrganizationName` + Seek על `IX_Requests_CreatedAt` + Hash Join | **142** | 2,405 | 6ms מול 13ms |
-| Q4 חיפוש טקסט `%permit%` | COUNT | **Clustered Index Scan** – אין אינדקס שעוזר ל-`LIKE '%x%'` | 2,405 | 2,405 | **~400ms CPU** |
-| | עמוד | Scan אחורה על `IX_Requests_CreatedAt`, נעצר אחרי 315 שורות | 969 | – | 2ms |
-| Q3 עמוד 500 (`OFFSET 9980`) של `status=New` | עמוד | האופטימייזר מוותר על האינדקס: Clustered Scan (20,091 שורות) + Sort | 2,405 | – | **~50ms** |
+**זמני תגובה של ה-API** (20 קריאות):
 
-**זמן תגובה מקצה לקצה (API, ממוצע 20 קריאות):**
-
-| קריאה | ממוצע | מקסימום |
+| קריאה | ממוצע | p95 |
 |---|---|---|
-| עמוד 1, ללא סינון | 22ms | 30ms |
-| סינון לפי סטטוס | 14ms | 23ms |
-| סינון לפי מטפל + סטטוס | 10ms | 12ms |
-| עמוד 500 | 50ms | 55ms |
-| חיפוש טקסט `permit` | **405ms** | 463ms |
+| עמוד 1 ללא סינון | 22ms | 35ms |
+| סטטוס חדשה + ממתינה | 13ms | 16ms |
+| ארגון + טווח תאריכים | 18ms | 21ms |
+| מטפל (מכיל) + סטטוס, מיון לפי עדיפות | 76ms | 85ms |
+| עמוד 500 | 48ms | 57ms |
+| חיפוש טקסט | **363ms** | 391ms |
 
-### 2. `GET /api/requests/summary` – Aggregations
+## הפעולה השנייה: `GET /api/requests/summary` – הנתונים המסכמים
 
-| שאילתה | Plan | Logical reads עם אינדקס | בלי | זמן |
-|---|---|---|---|---|
-| Q7 `GROUP BY Status, Priority` | Index Scan על `IX_Requests_Status_CreatedAt` (Priority ב-INCLUDE) + Hash Aggregate → 12 שורות | **670** | 2,405 | ~33ms |
-| Q8 Top 5 מטפלים לפי פניות פתוחות | **Index Seek** `AssignedTo IS NOT NULL` על `IX_Requests_AssignedTo_Status` + Stream Aggregate (ממוין כבר לפי AssignedTo) | **664** | 2,405 | ~18ms |
+שתי שאילתות: `GROUP BY (Status, Priority)` עם ספירת הפניות הוותיקות והעדכון האחרון (עד 12 שורות), ו-Top 5 מטפלים.
 
-| קריאה | ממוצע |
-|---|---|
-| `summary` מה-Cache | **5ms** |
-| `summary` אחרי Invalidation (חישוב מחדש) | 64ms |
+| # | שאילתה | תוכנית בפועל | Reads | בלי אינדקס | זמן |
+|---|---|---|---|---|---|
+| Q7 | קבוצות סטטוס × עדיפות | סריקה של `IX_Requests_Status_CreatedAt` בלבד (Priority ו-UpdatedAt ב-INCLUDE) + Hash Aggregate | **325** | 1,999 | 46ms |
+| Q8 | Top 5 מטפלים | Seek על `IX_Requests_AssignedTo_Status` (‏AssignedTo IS NOT NULL), 43,086 שורות, Stream Aggregate בלי מיון | **370** | 1,999 | 17ms |
 
-שתי השאילתות סורקות את כל הטבלה מטבען (Aggregation על כל הנתונים) – האינדקס הצר מקטין את ה-IO פי 3.6, וה-Cache חוסך את החישוב לגמרי ברוב הקריאות.
+| קריאה | ממוצע | p95 |
+|---|---|---|
+| ללא סינון – **מה-Cache** | **2ms** | 3ms |
+| עדיפות = גבוהה (מחושב) | 89ms | 105ms |
+| חיפוש טקסט (מחושב) | 524ms | 546ms |
 
-## האינדקסים שנוספו ולמה
+השאילתות האלה עוברות על כל הפניות התואמות מטבען (זו אגרגציה). האינדקסים מקטינים את ה-IO פי 5–6, וה-Cache חוסך את החישוב לגמרי בתצוגה הנפוצה ביותר.
 
-| אינדקס | עמודות | למה | הוכחה מהמדידה |
+## עדכון סטטוס
+
+`UPDATE … WHERE Id = @id AND RowVersion = @expected` + הוספת שורת היסטוריה: **3 + 7 + 4 logical reads**, ‏~1ms. בדיקת הגרסה מתבצעת בתוך ה-UPDATE עצמו, על המפתח הראשי.
+
+## מה נמצא ותוקן במהלך המדידות
+
+1. **EF Core 8 ו-`OPENJSON` (תוקן).** `statuses.Contains(r.Status)` מתורגם ב-EF Core 8 ל-`IN (SELECT … FROM OPENJSON(@json))`. ‏SQL Server לא יכול להעריך כמה ערכים יש ב-JSON, ולכן סרק את כל אינדקס הסטטוס (100,000 שורות) במקום Seek:
+
+   | COUNT של סטטוס חדשה + ממתינה | Reads | זמן |
+   |---|---|---|
+   | `OPENJSON` (ברירת המחדל של EF Core 8) | 325 | 16–20ms |
+   | `Status = @p0 OR Status = @p1` (התיקון) | **102** | 8ms |
+
+   התיקון: ב-Repository נבנה ביטוי `שדה = @p0 OR שדה = @p1` לסינוני הסטטוס והעדיפות. כל ערך נשאר פרמטר, כך שהתוכנית נשמרת ב-Cache של SQL Server. ב-Bulk, ‏`ids.Contains` נשאר עם `OPENJSON` – עד 100 מזהים, Join על המפתח הראשי, וזה המבנה הנכון שם.
+
+2. **פרגמנטציה אחרי טעינה מרוכזת (תוקן).** ה-Seeder מכניס את השורות לפי סדר ה-Id, אבל האינדקסים המשניים ממוינים לפי עמודות אחרות, ולכן נבנו בפיצולי דפים: **95–99% פרגמנטציה ו-56–76% מילוי**. אחרי `ALTER INDEX ALL … REBUILD` בסוף ה-Seed: ‏0% פרגמנטציה, 99% מילוי, והאינדקסים קטנו (למשל `IX_Requests_CreatedAt`: ‏675 → 211 דפים).
+
+3. **אינדקס מכסה ל-Summary (תוקן).** ה-Summary החדש סוכם גם את `CreatedAt` ואת `UpdatedAt`. בלי `UpdatedAt` ב-INCLUDE של `IX_Requests_Status_CreatedAt`, ‏SQL Server סרק את כל הטבלה. אחרי ההוספה: **2,178 → 324 reads**. אין עלות כתיבה נוספת: ‏`UpdatedAt` משתנה באותו UPDATE כמו `Status`, שכבר מעדכן את האינדקס הזה.
+
+## האינדקסים ולמה
+
+| אינדקס | עמודות | בשביל מה | מה נמדד |
 |---|---|---|---|
-| `PK_Requests` (Clustered) | `Id` | שליפה/עדכון לפי מזהה, Key Lookup | – |
-| `IX_Requests_CreatedAt` | `CreatedAt` | מיון ברירת המחדל + טווח תאריכים. מאפשר "Top N" בלי למיין 100K שורות | Q1: 66 מול 2,405 reads, 0 מול 162ms |
-| `IX_Requests_Status_CreatedAt` | `Status, CreatedAt` INCLUDE `Priority` | הסינון הנפוץ ביותר (תור "חדשות"), ו-Covering ל-Aggregation של סטטוס×עדיפות | Q2 COUNT: 213 מול 2,405; Q7: 670 מול 2,405 |
-| `IX_Requests_AssignedTo_Status` | `AssignedTo, Status` | "הפניות שלי" + עומס לפי מטפל | Q5 COUNT: 10 מול 2,405; Q8: Seek במקום Scan |
-| `IX_Requests_OrganizationName` | `OrganizationName` | סינון ארגון כ-**prefix** (`LIKE 'abc%'`) שמאפשר Seek | Q6: 142 מול 2,405 |
-| `IX_RequestStatusHistory_RequestId_ChangedAt` | `RequestId, ChangedAt` | היסטוריה של פנייה ממוינת לפי זמן; גם תומך ב-FK | – |
+| `PK_Requests` (Clustered) | `Id` | שליפה ועדכון לפי מזהה, Key Lookup | עדכון: 3 reads |
+| `IX_Requests_CreatedAt` | `CreatedAt` | מיון ברירת המחדל וטווח תאריכים: "20 האחרונות" בלי למיין 100K שורות | Q1: ‏3ms מול 162ms |
+| `IX_Requests_Status_CreatedAt` | `Status, CreatedAt` INCLUDE `Priority, UpdatedAt` | הסינון הנפוץ ביותר, ומכסה את כל שאילתת הקבוצות של ה-Summary | Q2 COUNT: ‏102 מול 1,999; ‏Q7: ‏325 מול 1,999 |
+| `IX_Requests_AssignedTo_Status` | `AssignedTo, Status` | Top מטפלים; סינון לפי מטפל סורק אותו במקום את הטבלה | Q8: ‏370 מול 1,999 |
+| `IX_Requests_OrganizationName` | `OrganizationName` | סינון ארגון לפי תחילית (`LIKE 'abc%'`) – Seek | Q6: ‏63 מול 1,999 |
+| `IX_RequestStatusHistory_RequestId_ChangedAt` | `RequestId, ChangedAt` | היסטוריה של פנייה, מהחדש לישן; משמש גם את ה-FK | – |
 
-**מחיר בכתיבה:** עדכון סטטוס משנה את `Status`, ולכן מעדכן גם את שני האינדקסים שמכילים אותו (בנוסף ל-Clustered). זה מחיר מקובל: עדכונים הם פעולה בודדת לפי מפתח, וקריאות הן הרוב. לא נוסף אינדקס על `Priority` לבד (סלקטיביות נמוכה – 3 ערכים) ולא על `Title` (חיפוש הוא `contains`, ש-B-Tree לא עוזר לו).
+**מה לא נוסף ולמה:** לא נוסף אינדקס על `Priority` לבד (3 ערכים – סלקטיביות נמוכה מדי) ולא על `Title` (החיפוש הוא "מכיל", ו-B-Tree לא עוזר לו).
+**מחיר בכתיבה:** עדכון סטטוס משנה את שני האינדקסים שמכילים `Status`, בנוסף לטבלה – 7 reads לכל ה-UPDATE. מקובל: עדכונים הם פעולה בודדת לפי מפתח, וקריאות הן הרוב.
 
-## איך נמנעת טעינה של כל הנתונים לזיכרון
+## איך נמנעת טעינת כל הנתונים לזיכרון
 
-* `RequestQueryService` בונה `IQueryable` אחד: `Where` (כל הסינונים) → `OrderBy` + `ThenBy(Id)` → `Skip/Take` → `Select` ל-DTO. EF מתרגם הכול לשאילתה אחת עם `OFFSET/FETCH` – רק העמוד חוזר מה-DB.
-* `Select` ל-DTO מביא רק את העמודות הנחוצות, ו-`AsNoTracking` – אין Change Tracking לשורות קריאה.
-* `PageSize` מוגבל ל-100 (Validation), כך שאי אפשר לבקש "הכול".
-* ה-Aggregations רצים כ-`GROUP BY` ב-DB ומחזירים 12 + 5 שורות בלבד.
-* בצד Angular אין סינון/מיון/דפדוף כלל – כל שינוי שולח בקשה חדשה לשרת.
+* ה-Repository בונה `IQueryable` אחד: סינונים → מיון + `ThenBy(Id)` → `Skip/Take` → הטלה ל-DTO. ‏EF מתרגם הכול לשאילתה אחת עם `OFFSET/FETCH`, ורק העמוד המבוקש יוצא מבסיס הנתונים.
+* ההטלה ל-DTO קוראת רק את העמודות הנחוצות, עם `AsNoTracking`.
+* `PageSize` מוגבל ל-100 בוולידציה – אי אפשר לבקש "הכול". עמוד שאחרי הסוף מחזיר ריק בלי לשאול את בסיס הנתונים.
+* ה-Summary רץ כ-`GROUP BY` בבסיס הנתונים ומחזיר עד 12 שורות + 5 מטפלים.
+* בצד Angular אין סינון, מיון או דפדוף בכלל. כל שינוי שולח בקשה חדשה לשרת, ו-`switchMap` מבטל את הקודמת.
 
-## Bottlenecks שזוהו והצעות לשיפור
+## צווארי בקבוק והצעות לשיפור
 
-### 1. חיפוש טקסט `contains` – ה-Bottleneck העיקרי (~400ms)
+### 1. חיפוש טקסט "מכיל" – צוואר הבקבוק העיקרי (~360ms, ‏Summary עם חיפוש ~520ms)
 
-`LIKE '%permit%'` לא יכול להשתמש באינדקס B-Tree, ולכן ה-`COUNT` סורק את כל 100K השורות. העמוד עצמו מהיר (2ms) כי הוא נעצר אחרי 20 תוצאות – **ה-COUNT הוא שעולה**. רוב הזמן הוא **CPU**, לא IO: השוואת מחרוזות Unicode עם Collation לא-בינארי יקרה.
+`LIKE '%היתר%'` לא יכול להשתמש באינדקס, ולכן ה-`COUNT` סורק את כל 100,000 השורות. העמוד עצמו מהיר (2ms) כי הוא נעצר אחרי 20 תוצאות – **ה-COUNT הוא שיקר**. רוב הזמן הוא **CPU** ולא IO: השוואת מחרוזות Unicode עם Collation לשוני.
 
-ניסוי שנערך (אותן 6,710 תוצאות):
+ניסוי (אותן 6,798 תוצאות):
 
 | גרסה | CPU / Elapsed |
 |---|---|
-| נוכחי – `nvarchar` עם Collation של ה-DB | 391ms / 422ms |
-| `UPPER(col) COLLATE Latin1_General_100_BIN2 LIKE '%PERMIT%'` | **62ms / 65ms** (פי 6.5) |
-| `varchar` עם SQL Collation | 94ms / 80ms |
+| נוכחי – `nvarchar` עם ה-Collation של בסיס הנתונים | 313ms / 363ms |
+| `COLLATE Latin1_General_100_BIN2` | **46ms / 45ms** (פי 8) |
+| `UPPER(...) COLLATE Latin1_General_100_BIN2` | 79ms / 85ms |
 
-**הצעות, לפי סדר עדיפות:**
-1. **מהיר וזול:** עמודה מחושבת `PERSISTED` – `SearchText = UPPER(Title + ' ' + OrganizationName) COLLATE Latin1_General_100_BIN2`, והחיפוש עליה. שיפור של פי ~6 בלי תשתית חדשה.
-2. **Full-Text Search** של SQL Server (`CONTAINS`) – חיפוש לפי מילים עם אינדקס הפוך. לא זמין ב-LocalDB ולכן לא מומש.
-3. בממשק: Debounce (‏350ms) + ביטול בקשות קודמות (`switchMap`) כבר מונעים עומס מיותר בזמן הקלדה.
-4. לשקול **ספירה משוערת** או "יש עוד עמוד" במקום `COUNT` מדויק לחיפושי טקסט.
+לעברית אין אותיות גדולות וקטנות, כך שהשוואה בינארית מספיקה לה. `UPPER` נדרש רק כדי שגם אותיות לטיניות יימצאו בלי תלות ב-Case.
+
+**הצעות, לפי סדר:**
+1. **זול ומהיר:** עמודה מחושבת `PERSISTED` – ‏`SearchText = UPPER(Title + N' ' + OrganizationName) COLLATE Latin1_General_100_BIN2` – והחיפוש עליה. שיפור צפוי של פי 4–8 בלי תשתית חדשה.
+2. **Full-Text Search** של SQL Server (`CONTAINS`) – אינדקס הפוך לפי מילים. לא זמין ב-LocalDB, ולכן לא מומש.
+3. כבר קיים בממשק: המתנה של 350ms אחרי ההקלדה, וביטול בקשות קודמות עם `switchMap`.
 
 ### 2. דפדוף עמוק (OFFSET)
 
-בעמוד 500, SQL Server צריך לעבור על 10,000 שורות ולזרוק אותן. האופטימייזר מעדיף אז Scan + Sort (‏50ms). בממשק אנשים כמעט לא מגיעים לשם, אבל זה גדל ליניארית עם מספר העמוד.
-**שיפור:** Keyset pagination (‏"seek method") – `WHERE (CreatedAt, Id) < (@lastCreatedAt, @lastId) ORDER BY CreatedAt DESC, Id DESC` – מחיר קבוע לכל עמוד. החיסרון: אי אפשר לקפוץ ישירות לעמוד N, ולכן לא נבחר לגרסה הזו.
+בעמוד 500, ‏SQL Server צריך לעבור על 10,000 שורות ולזרוק אותן, ובוחר בסריקה + מיון (‏~40ms). העלות גדלה עם מספר העמוד.
+**שיפור:** Keyset pagination – ‏`WHERE (CreatedAt, Id) < (@lastCreatedAt, @lastId)` – מחיר קבוע לכל עמוד. החיסרון: אי אפשר לקפוץ ישירות לעמוד N, ולכן הוא לא נבחר.
 
-### 3. `COUNT(*)` בכל בקשה
+### 3. Summary עם סינון סטטוס או עדיפות בלבד
 
-גם ללא סינון, `COUNT` סורק אינדקס שלם (614 reads). זה זול כאן, אבל ב-10M שורות יהיה מורגש. אפשרויות: Cache קצר לספירה לפי פילטר, או ספירה משוערת מ-`sys.dm_db_partition_stats` כשאין פילטר.
+שאילתת הקבוצות מתעלמת בכוונה מסינוני הסטטוס והעדיפות (הם מוחלים אחר כך, כדי שכל פילוח יוכל להתעלם מהסינון שלו). לכן כשהמשתמש מסנן **רק** לפי סטטוס או עדיפות, השאילתה זהה לזו של התצוגה ללא סינון – אבל מחושבת מחדש בכל פעם (89ms).
+**שיפור:** לשמור ב-Cache את הקבוצות לפי "הסינונים המשותפים" (כל השאר), ולא את התוצאה הסופית. בחירת צ'יפים של סטטוס/עדיפות תהיה אז מה-Cache.
+
+### 4. סינון לפי מטפל ("מכיל")
+
+נבחר חיפוש "מכיל" כדי שאפשר יהיה לחפש לפי שם משפחה. המחיר: סריקה של אינדקס המטפלים הצר (370 reads) במקום Seek. עם מיון לפי עדיפות, SQL Server סורק את הטבלה וממיין 606 שורות – 76ms בסך הכול. מקובל בהיקף הזה. אם יידרש: רשימת מטפלים לבחירה (התאמה מדויקת → Seek).
+
+### 5. `COUNT(*)` בכל בקשה
+
+גם ללא סינון, ה-COUNT סורק אינדקס שלם (213 reads, 15ms). זה זול כאן, אבל גדל ליניארית עם הטבלה. אפשרויות: ספירה משוערת מ-`sys.dm_db_partition_stats` כשאין סינון, או Cache קצר לספירה.

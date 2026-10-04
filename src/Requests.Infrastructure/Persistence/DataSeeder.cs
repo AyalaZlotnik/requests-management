@@ -98,8 +98,10 @@ public partial class DataSeeder(RequestsDbContext db, TimeProvider timeProvider,
             await connection.CloseAsync();
         }
 
-        // Fresh statistics so the first execution plans are based on the real data distribution.
-        await db.Database.ExecuteSqlRawAsync("UPDATE STATISTICS Requests WITH FULLSCAN;", ct);
+        // Rows arrive in Id order, so the secondary indexes (sorted by other columns) fill up through page
+        // splits – measured 95-99% fragmentation and 56-76% page fill. Rebuilding after a bulk load is the
+        // standard fix; it also refreshes the statistics with a full scan.
+        await db.Database.ExecuteSqlRawAsync("ALTER INDEX ALL ON Requests REBUILD;", ct);
         LogSeeded(logger, count);
     }
 
