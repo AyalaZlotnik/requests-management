@@ -53,7 +53,64 @@ public class SearchRequestsTests(RequestsApiFactory factory) : IClassFixture<Req
         result.Items.Select(i => i.Title).Should().Equal("A", "B");
     }
 
+    [Fact]
+    public async Task Paging_over_equal_sort_values_returns_every_row_exactly_once()
+    {
+        // 25 requests with the same CreatedAt: without a tie-breaker the order between pages is undefined.
+        var sameTime = new DateTime(2026, 2, 1, 8, 0, 0, DateTimeKind.Utc);
+        var seeded = await factory.ResetAndSeedAsync(
+            Enumerable.Range(1, 25).Select(i => NewRequest($"פנייה {i}", createdAt: sameTime)).ToArray());
+
+        var seen = new List<int>();
+        for (var page = 1; page <= 3; page++)
+        {
+            seen.AddRange((await GetPage($"sortBy=createdAt&sortDirection=desc&pageSize=10&page={page}")).Items.Select(i => i.Id));
+        }
+
+        seen.Should().OnlyHaveUniqueItems().And.BeEquivalentTo(seeded.Select(r => r.Id));
+    }
+
+    [Fact]
+    public async Task Sorting_is_done_on_the_whole_result_not_only_within_the_page()
+    {
+        await factory.ResetAndSeedAsync(
+            NewRequest("ג", createdAt: new DateTime(2026, 1, 3, 0, 0, 0, DateTimeKind.Utc)),
+            NewRequest("א", createdAt: new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)),
+            NewRequest("ב", createdAt: new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc)));
+
+        var firstPage = await GetPage("sortBy=title&sortDirection=asc&pageSize=2&page=1");
+
+        firstPage.Items.Select(i => i.Title).Should().Equal("א", "ב");
+    }
+
+    [Fact]
+    public async Task Page_past_the_end_returns_an_empty_page_with_the_real_total()
+    {
+        await factory.ResetAndSeedAsync(NewRequest(), NewRequest());
+
+        var result = await GetPage("pageSize=10&page=50");
+
+        result.Items.Should().BeEmpty();
+        result.TotalCount.Should().Be(2);
+    }
+
     [Theory]
+    [InlineData("%")]
+    [InlineData("_")]
+    [InlineData("[")]
+    public async Task Search_treats_like_wildcards_as_plain_characters(string term)
+    {
+        // Each special character appears in exactly one title; unescaped, %, _ and [ would match more (or fail).
+        await factory.ResetAndSeedAsync(
+            NewRequest("הנחה של 50% בתשלום"), NewRequest("שם_קובץ"), NewRequest("סעיף [3]"), NewRequest("רגיל"));
+
+        var result = await GetPage($"search={Uri.EscapeDataString(term)}");
+
+        result.Items.Should().ContainSingle().Which.Title.Should().Contain(term);
+    }
+
+    [Theory]
+    [InlineData("page=2147483647", "Page")]
     [InlineData("pageSize=0", "PageSize")]
     [InlineData("pageSize=101", "PageSize")]
     [InlineData("page=0", "Page")]

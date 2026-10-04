@@ -32,8 +32,16 @@ public class RequestRepository(RequestsDbContext db) : IRequestRepository
 
         var totalCount = await filtered.CountAsync(ct);
 
+        // long: page × pageSize must never overflow, whatever limits validation applies.
+        var skip = (long)(query.Page - 1) * query.PageSize;
+        if (skip >= totalCount)
+        {
+            // Past the last page – no need to ask the database for rows that cannot exist.
+            return new PagedResult<RequestListItemDto>([], query.Page, query.PageSize, totalCount);
+        }
+
         var items = await ApplySort(filtered, query.SortBy, query.SortDirection)
-            .Skip((query.Page - 1) * query.PageSize)
+            .Skip((int)skip)
             .Take(query.PageSize)
             .Select(ToListItem)
             .ToListAsync(ct);
