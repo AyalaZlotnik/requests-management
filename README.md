@@ -1,5 +1,7 @@
 # ניהול פניות – מבדק Full Stack
 
+[![CI](https://github.com/AyalaZlotnik/requests-management/actions/workflows/ci.yml/badge.svg)](https://github.com/AyalaZlotnik/requests-management/actions/workflows/ci.yml)
+
 מערכת לניהול פניות שמגיעות מארגונים ומעסיקים, לעבודה של כמה משתמשים במקביל על 100,000 פניות ויותר: איתור, סינון, מיון ודפדוף בצד השרת, עדכון סטטוס עם הגנה מפני דריסה, עדכון מרוכז, היסטוריית שינויים ונתונים מסכמים.
 
 | מסמך | מה יש בו |

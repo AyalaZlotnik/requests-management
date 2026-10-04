@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  SA_PASSWORD: "Requests_Dev_123!"
+
+jobs:
+  backend:
+    name: Backend tests (SQL Server 2022)
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "Requests_Dev_123!"
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P Requests_Dev_123! -Q 'SELECT 1' -b -o /dev/null"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+          --health-start-period 15s
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Test
+        env:
+          REQUESTS_TEST_CONNECTION: "Server=localhost,1433;User Id=sa;Password=${{ env.SA_PASSWORD }};TrustServerCertificate=True"
+        run: dotnet test --logger "console;verbosity=normal"
+
+  frontend:
+    name: Frontend tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/requests-ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/requests-ui/package-lock.json
+      - run: npm ci
+      - run: npx ng test --watch=false
+
+  docker:
+    name: Docker path from the README
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: docker compose up -d --wait
+        run: docker compose up -d --wait
+      - name: API against the container – first run creates the database and 100,000 requests
+        env:
+          ConnectionStrings__RequestsDb: "Server=localhost,1433;Database=RequestsManagement;User Id=sa;Password=${{ env.SA_PASSWORD }};TrustServerCertificate=True"
+        run: |
+          nohup dotnet run --project src/Requests.Api > api.log 2>&1 &
+          for i in $(seq 1 120); do
+            curl -sf "http://localhost:5080/api/requests?pageSize=1" -o page.json && break
+            sleep 2
+          done
+          jq '{totalCount, first: .items[0].title}' page.json
+          test "$(jq .totalCount page.json)" = "100000"
+          curl -sf http://localhost:5080/api/requests/summary | jq '{total, openOlderThan7Days}'
+      - name: The 409 commands from the README
+        run: |
+          ETAG=$(curl -si http://localhost:5080/api/requests/1 | grep -i '^etag:' | cut -d' ' -f2 | tr -d '\r')
+          A=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH http://localhost:5080/api/requests/1/status \
+            -H "If-Match: $ETAG" -H "Content-Type: application/json" -d '{"status":"InProgress","changedBy":"Dana"}')
+          B=$(curl -s -o body.json -w "%{http_code}" -X PATCH http://localhost:5080/api/requests/1/status \
+            -H "If-Match: $ETAG" -H "Content-Type: application/json" -d '{"status":"Waiting","changedBy":"Yossi"}')
+          echo "A: $A  B: $B"; jq '{title, currentStatus: .currentState.status, changedBy: .lastChange.changedBy}' body.json
+          test "$A" = "200" && test "$B" = "409" && test "$(jq -r .lastChange.changedBy body.json)" = "Dana"
+      - name: Backend tests against the compose container
+        env:
+          REQUESTS_TEST_CONNECTION: "Server=localhost,1433;User Id=sa;Password=${{ env.SA_PASSWORD }};TrustServerCertificate=True"
+        run: dotnet test
+      - name: Logs on failure
+        if: failure()
+        run: |
+          cat api.log || true
+          docker compose logs
