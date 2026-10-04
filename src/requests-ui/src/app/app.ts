@@ -1,31 +1,41 @@
-import { Component, inject } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Component, computed, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
-import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatInputModule } from '@angular/material/input';
+import { MatDialog } from '@angular/material/dialog';
+import { MatMenuModule } from '@angular/material/menu';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { RouterOutlet } from '@angular/router';
 import { ConnectionStatus } from './core/api/connection-status.service';
 import { CurrentUser } from './core/current-user.service';
 import { IconComponent } from './core/ui/icon.component';
-
-const MAX_NAME_LENGTH = 100;
+import { UserNameDialogComponent } from './core/ui/user-name-dialog.component';
 
 @Component({
   selector: 'app-root',
-  imports: [ReactiveFormsModule, MatToolbarModule, MatFormFieldModule, MatInputModule, MatButtonModule, RouterOutlet, IconComponent],
+  imports: [MatToolbarModule, MatButtonModule, MatMenuModule, RouterOutlet, IconComponent],
   template: `
-    <mat-toolbar class="top">
-      <h1>ניהול פניות</h1>
+    <mat-toolbar class="app-bar">
+      <app-icon name="inbox" [size]="28" class="app-logo" />
+      <div class="app-title">
+        <h1>ניהול פניות</h1>
+        <span class="app-subtitle">פניות מארגונים ומעסיקים</span>
+      </div>
       <span class="spacer"></span>
-      <mat-form-field class="user" subscriptSizing="dynamic" appearance="outline">
-        <mat-label>שם המשתמש (נשמר בהיסטוריה)</mat-label>
-        <input matInput [formControl]="userName" [maxlength]="maxNameLength" />
-        @if (userName.hasError('required')) {
-          <mat-error>יש להזין שם – הוא נרשם בהיסטוריית השינויים.</mat-error>
-        }
-      </mat-form-field>
+
+      <button type="button" class="user-button" [matMenuTriggerFor]="userMenu" [attr.aria-label]="'משתמש: ' + user.name()">
+        <span class="avatar" aria-hidden="true">{{ initials() }}</span>
+        <span class="user-name">{{ user.name() }}</span>
+        <app-icon name="dropDown" [size]="20" />
+      </button>
+      <mat-menu #userMenu="matMenu" xPosition="before">
+        <div class="menu-header">
+          <span class="muted small">שם שנרשם בהיסטוריה</span>
+          <strong>{{ user.name() }}</strong>
+        </div>
+        <button mat-menu-item type="button" (click)="changeName()">
+          <app-icon name="edit" [size]="18" />
+          <span>שינוי שם…</span>
+        </button>
+      </mat-menu>
     </mat-toolbar>
 
     @if (connection.offline()) {
@@ -42,21 +52,27 @@ const MAX_NAME_LENGTH = 100;
   `,
 })
 export class App {
-  private readonly user = inject(CurrentUser);
+  protected readonly user = inject(CurrentUser);
   protected readonly connection = inject(ConnectionStatus);
+  private readonly dialog = inject(MatDialog);
 
-  protected readonly maxNameLength = MAX_NAME_LENGTH;
-  protected readonly userName = new FormControl(this.user.name(), {
-    nonNullable: true,
-    validators: [Validators.required, Validators.maxLength(MAX_NAME_LENGTH)],
-  });
+  /** First letter of the first two words: "דנה לוי" → "דל". */
+  protected readonly initials = computed(() =>
+    this.user
+      .name()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((word) => word[0])
+      .join(''),
+  );
 
-  constructor() {
-    this.userName.markAsTouched();
-    this.userName.statusChanges.pipe(takeUntilDestroyed()).subscribe(() => this.user.nameValid.set(this.userName.valid));
-    // Only a valid name is used for updates; an empty field shows its error instead of being ignored silently.
-    this.userName.valueChanges.pipe(takeUntilDestroyed()).subscribe((name) => {
-      if (this.userName.valid && name.trim()) this.user.name.set(name.trim());
-    });
+  protected changeName(): void {
+    this.dialog
+      .open<UserNameDialogComponent, string, string>(UserNameDialogComponent, { data: this.user.name(), width: '400px', direction: 'rtl' })
+      .afterClosed()
+      .subscribe((name) => {
+        if (name) this.user.name.set(name);
+      });
   }
 }

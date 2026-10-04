@@ -63,9 +63,30 @@ h3 { font-size: 13px; margin: 0 0 8px; color: var(--muted); font-weight: 600; }
 .notice ul { margin: 4px 0; }
 
 /* Toolbar */
-.top { gap: 16px; height: auto; min-height: 64px; padding-block: 8px; background: var(--surface); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-.top .spacer { flex: 1; }
-.top .user { width: 220px; font-size: 14px; }
+/* App bar: product name on the start side (right), signed-in user on the end side (left). */
+.app-bar {
+  height: 60px; gap: 12px; padding-inline: 20px;
+  /* Material's toolbar styles load after these, so its colors are set through its own tokens. */
+  --mat-toolbar-container-background-color: var(--mat-sys-primary);
+  --mat-toolbar-container-text-color: var(--mat-sys-on-primary);
+}
+.app-bar .spacer { flex: 1; }
+.app-logo { opacity: .9; }
+.app-title { display: flex; flex-direction: column; line-height: 1.2; }
+.app-title h1 { font-size: 18px; font-weight: 600; }
+.app-subtitle { font-size: 12px; font-weight: 400; opacity: .85; }
+.user-button {
+  display: inline-flex; align-items: center; gap: 8px; padding: 4px 6px 4px 12px; cursor: pointer;
+  font: inherit; font-size: 14px; color: inherit; background: transparent;
+  border: 1px solid rgba(255, 255, 255, .35); border-radius: 999px;
+}
+.user-button:hover, .user-button:focus-visible { background: rgba(255, 255, 255, .12); outline: none; }
+.avatar {
+  display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%;
+  background: var(--mat-sys-on-primary); color: var(--mat-sys-primary); font-size: 13px; font-weight: 600;
+}
+.menu-header { display: flex; flex-direction: column; gap: 2px; padding: 8px 16px 12px; border-bottom: 1px solid var(--border); }
+.mat-mdc-menu-item app-icon { margin-inline-end: 8px; color: var(--muted); }
 
 /* Connection banner (below the toolbar) */
 .connection-banner {

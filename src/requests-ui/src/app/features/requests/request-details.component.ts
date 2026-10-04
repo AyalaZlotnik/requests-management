@@ -69,7 +69,7 @@ type Loaded = { details: VersionedRequest; history: StatusHistoryEntry[] };
                   }
                 </mat-select>
               </mat-form-field>
-              <button mat-flat-button type="button" [disabled]="!nextStatus || saving() || !user.nameValid()" (click)="save(d.details)">
+              <button mat-flat-button type="button" [disabled]="!nextStatus || saving()" (click)="save(d.details)">
                 {{ saving() ? 'שומר…' : 'עדכון' }}
               </button>
             </div>
@@ -78,9 +78,6 @@ type Loaded = { details: VersionedRequest; history: StatusHistoryEntry[] };
             }
           } @else {
             <p class="muted">לא ניתן לשנות סטטוס ממצב "{{ d.details.request.status | statusLabel }}".</p>
-          }
-          @if (!user.nameValid()) {
-            <p class="muted small">כדי לעדכן יש להזין שם משתמש בראש המסך.</p>
           }
           @if (saveError()) {
             <p class="error-text" role="alert">{{ saveError() }}</p>
@@ -108,7 +105,7 @@ type Loaded = { details: VersionedRequest; history: StatusHistoryEntry[] };
 })
 export class RequestDetailsComponent {
   private readonly api = inject(RequestsApi);
-  protected readonly user = inject(CurrentUser);
+  private readonly user = inject(CurrentUser);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
   private readonly refresh$ = new Subject<void>();
