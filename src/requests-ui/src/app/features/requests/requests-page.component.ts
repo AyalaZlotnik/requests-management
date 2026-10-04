@@ -1,8 +1,11 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ConnectionStatus } from '../../core/api/connection-status.service';
 import { errorMessage } from '../../core/api/http-error';
 import { CurrentUser } from '../../core/current-user.service';
 import { BULK_OUTCOME_LABELS } from '../../core/i18n/labels';
@@ -30,6 +33,8 @@ import { SummaryPanelComponent } from './summary-panel.component';
     BulkStatusBarComponent,
   ],
   providers: [RequestsListStore],
+  // Material closes the drawer on Esc only while focus is inside it; after clicking a row focus stays in the list.
+  host: { '(document:keydown.escape)': 'closeDetailsOnEscape()' },
   template: `
     <!-- Details open in a drawer over the list, so the table keeps its full width. Esc or a click outside closes it. -->
     <mat-drawer-container class="page">
@@ -82,10 +87,15 @@ import { SummaryPanelComponent } from './summary-panel.component';
           }
 
           @if (store.error(); as error) {
-            <div class="state error" role="alert">
-              <p>לא ניתן לטעון את הפניות: {{ error }}</p>
-              <button mat-stroked-button type="button" (click)="store.reload()">ניסיון חוזר</button>
-            </div>
+            @if (connection.offline()) {
+              <!-- The connection banner at the top already explains this and offers a retry. -->
+              <div class="state" role="status">הרשימה תיטען כשהחיבור לשרת יחזור.</div>
+            } @else {
+              <div class="state error" role="alert">
+                <p>לא ניתן לטעון את הפניות. {{ error }}</p>
+                <button mat-stroked-button type="button" (click)="store.reload()">ניסיון חוזר</button>
+              </div>
+            }
           } @else if (store.isEmpty()) {
             <div class="state" role="status">לא נמצאו פניות התואמות לסינון.</div>
           } @else if (store.result(); as result) {
@@ -118,6 +128,8 @@ import { SummaryPanelComponent } from './summary-panel.component';
 export class RequestsPageComponent {
   protected readonly store = inject(RequestsListStore);
   private readonly user = inject(CurrentUser);
+  protected readonly connection = inject(ConnectionStatus);
+  private readonly dialog = inject(MatDialog);
 
   protected readonly pageSizes = PAGE_SIZES;
   protected readonly outcomeLabels = BULK_OUTCOME_LABELS;
@@ -126,6 +138,21 @@ export class RequestsPageComponent {
   protected readonly bulkBusy = signal(false);
   protected readonly bulkResult = signal<BulkUpdateResult | null>(null);
   protected readonly bulkError = signal<string | null>(null);
+
+  constructor() {
+    // "Try again" in the connection banner reloads everything on this page.
+    this.connection.retryRequested.pipe(takeUntilDestroyed()).subscribe(() => {
+      this.store.reload();
+      this.summaryRefresh.update((n) => n + 1);
+    });
+  }
+
+  protected closeDetailsOnEscape(): void {
+    // With the conflict dialog open, Esc belongs to the dialog.
+    if (this.store.selectedId() !== null && this.dialog.openDialogs.length === 0) {
+      this.store.openRequest(null);
+    }
+  }
 
   /** Clicking a status in the summary shows only that status; clicking it again removes the filter. */
   protected toggleStatus(status: RequestStatus): void {

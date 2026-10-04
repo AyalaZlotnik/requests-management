@@ -1,8 +1,9 @@
-import { Component, input, output } from '@angular/core';
+import { Component, inject, input, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
+import { CurrentUser } from '../../core/current-user.service';
 import { REQUEST_STATUSES, RequestStatus } from '../../core/models/request.models';
 import { StatusLabelPipe } from './status-label.pipe';
 
@@ -21,10 +22,13 @@ import { StatusLabelPipe } from './status-label.pipe';
           }
         </mat-select>
       </mat-form-field>
-      <button mat-flat-button type="button" [disabled]="busy() || count() > max" (click)="apply.emit(status)">
+      <button mat-flat-button type="button" [disabled]="busy() || count() > max || !user.nameValid()" (click)="apply.emit(status)">
         {{ busy() ? 'מעדכן…' : 'עדכון כל הנבחרות' }}
       </button>
       <button mat-button type="button" (click)="clear.emit()">ביטול הבחירה</button>
+      @if (!user.nameValid()) {
+        <span class="error-text">כדי לעדכן יש להזין שם משתמש בראש המסך.</span>
+      }
       @if (count() > max) {
         <span class="error-text">ניתן לעדכן עד {{ max }} פניות בבת אחת.</span>
       }
@@ -39,5 +43,6 @@ export class BulkStatusBarComponent {
 
   protected readonly statuses = REQUEST_STATUSES;
   protected readonly max = 100;
+  protected readonly user = inject(CurrentUser);
   protected status: RequestStatus = 'InProgress';
 }

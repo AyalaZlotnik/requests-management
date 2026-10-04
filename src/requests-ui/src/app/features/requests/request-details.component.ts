@@ -69,7 +69,7 @@ type Loaded = { details: VersionedRequest; history: StatusHistoryEntry[] };
                   }
                 </mat-select>
               </mat-form-field>
-              <button mat-flat-button type="button" [disabled]="!nextStatus || saving()" (click)="save(d.details)">
+              <button mat-flat-button type="button" [disabled]="!nextStatus || saving() || !user.nameValid()" (click)="save(d.details)">
                 {{ saving() ? 'שומר…' : 'עדכון' }}
               </button>
             </div>
@@ -78,6 +78,9 @@ type Loaded = { details: VersionedRequest; history: StatusHistoryEntry[] };
             }
           } @else {
             <p class="muted">לא ניתן לשנות סטטוס ממצב "{{ d.details.request.status | statusLabel }}".</p>
+          }
+          @if (!user.nameValid()) {
+            <p class="muted small">כדי לעדכן יש להזין שם משתמש בראש המסך.</p>
           }
           @if (saveError()) {
             <p class="error-text" role="alert">{{ saveError() }}</p>
@@ -105,7 +108,7 @@ type Loaded = { details: VersionedRequest; history: StatusHistoryEntry[] };
 })
 export class RequestDetailsComponent {
   private readonly api = inject(RequestsApi);
-  private readonly user = inject(CurrentUser);
+  protected readonly user = inject(CurrentUser);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
   private readonly refresh$ = new Subject<void>();
@@ -134,7 +137,7 @@ export class RequestDetailsComponent {
         switchMap(([id]) =>
           forkJoin({ details: this.api.getById(id), history: this.api.getHistory(id) }).pipe(
             map((loaded) => ({ loaded, error: null })),
-            catchError((e) => of({ loaded: null, error: errorMessage(e) })),
+            catchError((e) => of({ loaded: null, error: errorMessage(e, { requestId: id }) })),
           ),
         ),
         takeUntilDestroyed(),
@@ -170,7 +173,7 @@ export class RequestDetailsComponent {
         if (conflict?.currentState) {
           this.resolveConflict(status, conflict.currentState, conflict.lastChange);
         } else {
-          this.saveError.set(errorMessage(e));
+          this.saveError.set(errorMessage(e, { requestId: id, attemptedStatus: status }));
         }
       },
     });

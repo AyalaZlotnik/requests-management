@@ -113,7 +113,7 @@ describe('RequestsListStore', () => {
     expect(store.isEmpty()).toBe(true);
   });
 
-  it('exposes an error state with a Hebrew message for the user', async () => {
+  it('exposes an error state that names the invalid field in Hebrew', async () => {
     const store = await createStore();
 
     searchRequests()[0].flush(
@@ -122,6 +122,6 @@ describe('RequestsListStore', () => {
     );
 
     expect(store.loading()).toBe(false);
-    expect(store.error()).toBe('הבקשה אינה תקינה.');
+    expect(store.error()).toBe('הערך בשדה "מספר שורות בעמוד" אינו תקין.');
   });
 });

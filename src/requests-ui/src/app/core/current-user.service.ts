@@ -9,6 +9,8 @@ const STORAGE_KEY = 'requests-ui.user';
 @Injectable({ providedIn: 'root' })
 export class CurrentUser {
   readonly name = signal(readStored() ?? 'משתמש לדוגמה');
+  /** False while the name field is empty or too long – updates are disabled until it is fixed. */
+  readonly nameValid = signal(true);
 
   constructor() {
     effect(() => {

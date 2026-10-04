@@ -5,7 +5,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { catchError, combineLatest, map, of, switchMap, tap } from 'rxjs';
 import { RequestsApi } from '../../core/api/requests-api.service';
-import { errorMessage } from '../../core/api/http-error';
+import { errorMessage, isConnectionError } from '../../core/api/http-error';
 import { RequestFilters, RequestStatus, RequestsSummary } from '../../core/models/request.models';
 import { PriorityLabelPipe, StatusLabelPipe } from './status-label.pipe';
 
@@ -116,7 +116,8 @@ export class SummaryPanelComponent {
         switchMap(([filters]) =>
           this.api.getSummary(filters).pipe(
             map((summary) => ({ summary, error: null })),
-            catchError((e) => of({ summary: null, error: errorMessage(e) })),
+            // No connection: keep the last numbers – the banner at the top already explains they may be stale.
+            catchError((e) => of({ summary: null, error: isConnectionError(e) ? null : errorMessage(e) })),
           ),
         ),
         takeUntilDestroyed(),
