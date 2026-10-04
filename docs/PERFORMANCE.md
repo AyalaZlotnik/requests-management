@@ -222,10 +222,10 @@ Assert
 | `COLLATE Latin1_General_100_BIN2` | **46ms / 45ms** (פי 8) |
 | `UPPER(...) COLLATE Latin1_General_100_BIN2` | 79ms / 85ms |
 
-לעברית אין אותיות גדולות וקטנות, כך שהשוואה בינארית מספיקה לה. `UPPER` נדרש רק כדי שגם אותיות לטיניות יימצאו בלי תלות ב-Case.
+לעברית אין אותיות גדולות וקטנות, כך שהשוואה בינארית מספיקה לה. אבל Collation בינארי לבד הופך את החיפוש **לרגיש ל-Case באותיות לטיניות**: "Permit" לא ימצא "permit". לכן העמודה המוצעת מחושבת על `UPPER(...)`, והמונח מחופש באותיות גדולות (`LIKE UPPER(@term)`). זו הגרסה שנמדדה בשורה השלישית: 85ms, פי 4 מהיום.
 
 **הצעות, לפי סדר:**
-1. **זול ומהיר:** עמודה מחושבת `PERSISTED` – ‏`SearchText = UPPER(Title + N' ' + OrganizationName) COLLATE Latin1_General_100_BIN2` – והחיפוש עליה. שיפור צפוי של פי 4–8 בלי תשתית חדשה.
+1. **זול ומהיר:** עמודה מחושבת `PERSISTED` – ‏`SearchText = UPPER(Title + N' ' + OrganizationName) COLLATE Latin1_General_100_BIN2` – והחיפוש עליה עם `UPPER(@term)`. שיפור צפוי של פי 4 בלי תשתית חדשה, בלי לשנות את התנהגות החיפוש.
 2. **Full-Text Search** של SQL Server (`CONTAINS`) – אינדקס הפוך לפי מילים. לא זמין ב-LocalDB, ולכן לא מומש.
 3. כבר קיים בממשק: המתנה של 350ms אחרי ההקלדה, וביטול בקשות קודמות עם `switchMap`.
 
