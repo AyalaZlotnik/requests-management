@@ -40,15 +40,18 @@ public class SearchRequestsTests(RequestsApiFactory factory) : IClassFixture<Req
     }
 
     [Fact]
-    public async Task Search_filters_by_assignee_and_organization_prefix()
+    public async Task Search_filters_by_part_of_the_handler_name_and_organization_prefix()
     {
         await factory.ResetAndSeedAsync(
-            NewRequest("A", organization: "Negev Water Co", assignedTo: "agent07"),
-            NewRequest("B", organization: "Negev Foods Ltd", assignedTo: "agent07"),
-            NewRequest("C", organization: "Negev Water Co", assignedTo: "agent08"),
-            NewRequest("D", organization: "Central Negev Ltd", assignedTo: "agent07"));
+            NewRequest("A", organization: "נגב מים בע\"מ", assignedTo: "דנה לוי"),
+            NewRequest("B", organization: "נגב מזון בע\"מ", assignedTo: "יוסי לוי"),
+            NewRequest("C", organization: "נגב מים בע\"מ", assignedTo: "דנה כהן"),
+            NewRequest("D", organization: "צפון נגב בע\"מ", assignedTo: "דנה לוי"),
+            NewRequest("E", organization: "נגב מים בע\"מ", assignedTo: null));
 
-        var result = await GetPage("organizationName=Negev&assignedTo=agent07&sortBy=title&sortDirection=asc");
+        // "לוי" matches the last name of two handlers; "נגב" must be at the start of the organization name.
+        var result = await GetPage(
+            $"organizationName={Uri.EscapeDataString("נגב")}&assignedTo={Uri.EscapeDataString("לוי")}&sortBy=title&sortDirection=asc");
 
         result.Items.Select(i => i.Title).Should().Equal("A", "B");
     }

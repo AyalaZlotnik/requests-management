@@ -149,7 +149,8 @@ public class RequestRepository(RequestsDbContext db) : IRequestRepository
         if (!string.IsNullOrWhiteSpace(query.AssignedTo))
         {
             var assignedTo = query.AssignedTo.Trim();
-            source = source.Where(r => r.AssignedTo == assignedTo);
+            // Contains: the user can type a first or last name.
+            source = source.Where(r => r.AssignedTo!.Contains(assignedTo));
         }
 
         if (query.CreatedFrom is { } from)

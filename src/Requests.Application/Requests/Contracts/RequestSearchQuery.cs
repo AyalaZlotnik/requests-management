@@ -38,7 +38,7 @@ public class RequestFilter : IValidatableObject
     [StringLength(RequestFieldLimits.OrganizationName)]
     public string? OrganizationName { get; set; }
 
-    /// <summary>Exact match on the handler.</summary>
+    /// <summary>Part of the handler name (contains), e.g. a first or last name.</summary>
     [StringLength(RequestFieldLimits.AssignedTo)]
     public string? AssignedTo { get; set; }
 
