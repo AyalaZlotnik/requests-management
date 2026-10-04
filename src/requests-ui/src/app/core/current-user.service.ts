@@ -1,6 +1,7 @@
 import { Injectable, effect, signal } from '@angular/core';
 
 const STORAGE_KEY = 'requests-ui.user';
+export const DEFAULT_USER_NAME = 'משתמש לדוגמה';
 
 /**
  * The name sent as "changedBy". There is no authentication in this exercise,
@@ -8,7 +9,7 @@ const STORAGE_KEY = 'requests-ui.user';
  */
 @Injectable({ providedIn: 'root' })
 export class CurrentUser {
-  readonly name = signal(readStored() ?? 'משתמש לדוגמה');
+  readonly name = signal(readStored() ?? DEFAULT_USER_NAME);
 
   constructor() {
     effect(() => {
@@ -21,9 +22,11 @@ export class CurrentUser {
   }
 }
 
+/** The remembered name, or null if there is none – an empty or blank value counts as none. */
 function readStored(): string | null {
   try {
-    return localStorage.getItem(STORAGE_KEY);
+    const stored = localStorage.getItem(STORAGE_KEY)?.trim();
+    return stored ? stored : null;
   } catch {
     return null;
   }
