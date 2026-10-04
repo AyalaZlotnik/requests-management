@@ -81,7 +81,8 @@ public partial class RequestCommandService(
                 continue;
             }
 
-            var clientVersion = Convert.FromBase64String(item.RowVersion);
+            // Format already validated by [RowVersion].
+            var clientVersion = RowVersions.Parse(item.RowVersion);
             if (!request.RowVersion.AsSpan().SequenceEqual(clientVersion))
             {
                 results[item.Id] = Conflict(item.Id);

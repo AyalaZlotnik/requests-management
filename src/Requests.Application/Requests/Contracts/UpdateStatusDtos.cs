@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Requests.Application.Common;
 using Requests.Application.Requests.Entities;
 
 namespace Requests.Application.Requests.Contracts;
@@ -19,7 +20,8 @@ public class BulkStatusItem
     [Range(1, int.MaxValue)]
     public int Id { get; set; }
 
-    [Required, Base64String]
+    /// <summary>The version of this request the client read (base64 of 8 bytes).</summary>
+    [Required, RowVersion]
     public string RowVersion { get; set; } = string.Empty;
 }
 

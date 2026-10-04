@@ -71,6 +71,25 @@ public class BulkUpdateStatusTests(RequestsApiFactory factory) : IClassFixture<R
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    [Theory]
+    [InlineData("AAAA")]          // valid base64, but 3 bytes
+    [InlineData("AAAAAAAAAAAAAA==")] // valid base64, but 10 bytes
+    [InlineData("not base64!")]
+    public async Task Bulk_item_with_a_malformed_row_version_returns_400_not_a_conflict(string rowVersion)
+    {
+        var seeded = await factory.ResetAndSeedAsync(NewRequest());
+        var command = new BulkUpdateStatusRequest
+        {
+            Status = RequestStatus.InProgress,
+            ChangedBy = "דנה לוי",
+            Items = [new BulkStatusItem { Id = seeded[0].Id, RowVersion = rowVersion }]
+        };
+
+        var response = await _client.PostAsJsonAsync("/api/requests/bulk/status", command, Json);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
     [Fact]
     public async Task Bulk_update_with_an_empty_item_returns_400_not_500()
     {

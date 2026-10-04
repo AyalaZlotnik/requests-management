@@ -1,4 +1,5 @@
 using Microsoft.Net.Http.Headers;
+using Requests.Application.Common;
 
 namespace Requests.Api.Http;
 
@@ -8,8 +9,6 @@ namespace Requests.Api.Http;
 /// </summary>
 public static class EntityTags
 {
-    private const int RowVersionLength = 8;
-
     public enum IfMatchError
     {
         None,
@@ -53,14 +52,13 @@ public static class EntityTags
             return IfMatchError.Invalid;
         }
 
-        var buffer = new byte[RowVersionLength];
-        if (!Convert.TryFromBase64String(tag.Tag.ToString().Trim('"'), buffer, out var written) || written != RowVersionLength)
+        // Same rule as the rowVersion of a bulk item.
+        if (!RowVersions.TryParse(tag.Tag.ToString().Trim('"'), out rowVersion))
         {
             detail = "The If-Match value is not an ETag issued by this API.";
             return IfMatchError.Invalid;
         }
 
-        rowVersion = buffer;
         return IfMatchError.None;
     }
 }
