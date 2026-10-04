@@ -1,6 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
-import { Observable, Subject, catchError, map, merge, of, switchMap, tap } from 'rxjs';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router } from '@angular/router';
+import { Observable, Subject, catchError, distinctUntilChanged, map, merge, of, switchMap, tap } from 'rxjs';
 import { RequestsApi } from '../../core/api/requests-api.service';
 import { errorMessage } from '../../core/api/http-error';
 import {
@@ -12,39 +13,29 @@ import {
   RequestStatus,
   SortField,
 } from '../../core/models/request.models';
-
-export const EMPTY_FILTERS: RequestFilters = {
-  search: '',
-  status: [],
-  priority: [],
-  organizationName: '',
-  assignedTo: '',
-  createdFrom: '',
-  createdTo: '',
-};
-
-const INITIAL_QUERY: RequestQuery = {
-  ...EMPTY_FILTERS,
-  page: 1,
-  pageSize: 20,
-  sortBy: 'createdAt',
-  sortDirection: 'desc',
-};
+import { UrlState, parseUrlState, sameValue, toQueryParams } from './query-params';
 
 type SearchOutcome = { ok: true; result: PagedResult<RequestListItem> } | { ok: false; error: string };
 
 /**
- * State of the requests list. Provided per page component.
- * Every query change goes through switchMap, so an in-flight HTTP request is cancelled when a newer
- * query arrives (fast typing / paging) and only the latest response is ever shown.
+ * State of the requests list, provided per page component.
+ * The URL is the single source of truth: every action navigates, and the list is fetched from what the
+ * URL says – so refresh, shared links and Back show the same view.
+ * Every query change goes through switchMap: an in-flight HTTP request is cancelled when a newer query
+ * arrives (fast typing / paging) and only the latest response is ever shown.
  * All filtering, sorting and paging happen on the server – the client only holds one page.
  */
 @Injectable()
 export class RequestsListStore {
   private readonly api = inject(RequestsApi);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private readonly reload$ = new Subject<void>();
 
-  readonly query = signal<RequestQuery>(INITIAL_QUERY);
+  private readonly urlState = toSignal(this.route.queryParamMap.pipe(map(parseUrlState)), { requireSync: true });
+
+  readonly query = computed(() => this.urlState().query, { equal: sameValue });
+  readonly selectedId = computed(() => this.urlState().selectedId);
 
   private readonly _result = signal<PagedResult<RequestListItem> | null>(null);
   private readonly _loading = signal(true);
@@ -60,7 +51,13 @@ export class RequestsListStore {
   readonly isEmpty = computed(() => !this._loading() && !this._error() && this._result()?.totalCount === 0);
 
   constructor() {
-    merge(toObservable(this.query), this.reload$.pipe(map(() => this.query())))
+    // Opening a request changes only "id" in the URL – that must not reload the list.
+    const query$ = this.route.queryParamMap.pipe(
+      map((params) => parseUrlState(params).query),
+      distinctUntilChanged(sameValue),
+    );
+
+    merge(query$, this.reload$.pipe(map(() => this.query())))
       .pipe(
         tap(() => {
           this._loading.set(true);
@@ -85,25 +82,27 @@ export class RequestsListStore {
   }
 
   setFilters(filters: RequestFilters): void {
-    this.query.update((q) => ({ ...q, ...filters, page: 1 }));
+    this.navigate({ ...this.query(), ...filters, page: 1 });
     this.clearSelection();
   }
 
   sortBy(field: SortField): void {
-    this.query.update((q) => ({
+    const q = this.query();
+    this.navigate({
       ...q,
       sortBy: field,
       sortDirection: q.sortBy === field && q.sortDirection === 'desc' ? 'asc' : 'desc',
       page: 1,
-    }));
+    });
   }
 
-  setPage(page: number): void {
-    this.query.update((q) => ({ ...q, page }));
+  setPage(page: number, pageSize: number): void {
+    const q = this.query();
+    this.navigate({ ...q, pageSize, page: pageSize === q.pageSize ? page : 1 });
   }
 
-  setPageSize(pageSize: number): void {
-    this.query.update((q) => ({ ...q, pageSize, page: 1 }));
+  openRequest(id: number | null): void {
+    this.navigate(this.query(), id);
   }
 
   reload(): void {
@@ -141,5 +140,10 @@ export class RequestsListStore {
         this.reload();
       }),
     );
+  }
+
+  private navigate(query: RequestQuery, selectedId: number | null = this.selectedId()): void {
+    const state: UrlState = { query, selectedId };
+    void this.router.navigate([], { relativeTo: this.route, queryParams: toQueryParams(state) });
   }
 }

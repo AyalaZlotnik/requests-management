@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { errorMessage } from '../../core/api/http-error';
 import { CurrentUser } from '../../core/current-user.service';
 import { BulkUpdateResult, RequestStatus } from '../../core/models/request.models';
@@ -6,6 +6,7 @@ import { BulkStatusBarComponent } from './bulk-status-bar.component';
 import { PaginationComponent } from './pagination.component';
 import { RequestDetailsComponent } from './request-details.component';
 import { RequestFiltersComponent } from './request-filters.component';
+import { filtersOf, sameValue } from './query-params';
 import { RequestsListStore } from './requests-list.store';
 import { RequestsTableComponent } from './requests-table.component';
 import { SummaryPanelComponent } from './summary-panel.component';
@@ -25,9 +26,9 @@ import { SummaryPanelComponent } from './summary-panel.component';
   template: `
     <app-summary-panel [refreshKey]="summaryRefresh()" />
 
-    <div class="layout" [class.with-details]="activeId() !== null">
+    <div class="layout" [class.with-details]="store.selectedId() !== null">
       <section class="list">
-        <app-request-filters (filtersChange)="store.setFilters($event)" />
+        <app-request-filters [value]="filters()" (filtersChange)="store.setFilters($event)" />
 
         @if (store.selection().size > 0) {
           <app-bulk-status-bar
@@ -66,10 +67,10 @@ import { SummaryPanelComponent } from './summary-panel.component';
             [sortBy]="store.query().sortBy"
             [sortDirection]="store.query().sortDirection"
             [selectedIds]="store.selectedIds()"
-            [activeId]="activeId()"
+            [activeId]="store.selectedId()"
             [loading]="store.loading()"
             (sort)="store.sortBy($event)"
-            (open)="activeId.set($event)"
+            (open)="store.openRequest($event)"
             (toggleSelect)="store.toggleSelection($event)"
             (toggleAll)="store.toggleAllOnPage()" />
           <app-pagination
@@ -77,16 +78,16 @@ import { SummaryPanelComponent } from './summary-panel.component';
             [pageSize]="result.pageSize"
             [totalPages]="result.totalPages"
             [totalCount]="result.totalCount"
-            (pageChange)="store.setPage($event)"
-            (pageSizeChange)="store.setPageSize($event)" />
+            (pageChange)="store.setPage($event, result.pageSize)"
+            (pageSizeChange)="store.setPage(1, $event)" />
         }
         @if (store.loading()) {
           <div class="state loading" aria-live="polite">Loading…</div>
         }
       </section>
 
-      @if (activeId(); as id) {
-        <app-request-details [requestId]="id" (changed)="onRequestChanged()" (closed)="activeId.set(null)" />
+      @if (store.selectedId(); as id) {
+        <app-request-details [requestId]="id" (changed)="onRequestChanged()" (closed)="store.openRequest(null)" />
       }
     </div>
   `,
@@ -95,7 +96,7 @@ export class RequestsPageComponent {
   protected readonly store = inject(RequestsListStore);
   private readonly user = inject(CurrentUser);
 
-  protected readonly activeId = signal<number | null>(null);
+  protected readonly filters = computed(() => filtersOf(this.store.query()), { equal: sameValue });
   protected readonly summaryRefresh = signal(0);
   protected readonly bulkBusy = signal(false);
   protected readonly bulkResult = signal<BulkUpdateResult | null>(null);

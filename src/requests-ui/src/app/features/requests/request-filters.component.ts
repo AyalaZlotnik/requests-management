@@ -1,7 +1,7 @@
-import { Component, output } from '@angular/core';
+import { Component, effect, input, output } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { debounceTime, distinctUntilChanged, filter, map } from 'rxjs';
+import { debounceTime, filter, map } from 'rxjs';
 import {
   REQUEST_PRIORITIES,
   REQUEST_STATUSES,
@@ -9,7 +9,7 @@ import {
   RequestPriority,
   RequestStatus,
 } from '../../core/models/request.models';
-import { EMPTY_FILTERS } from './requests-list.store';
+import { EMPTY_FILTERS, sameValue } from './query-params';
 import { StatusLabelPipe } from './status-label.pipe';
 
 /** Filter form. Emits the complete filter set, debounced, only when it actually changed and is valid. */
@@ -64,7 +64,12 @@ import { StatusLabelPipe } from './status-label.pipe';
   `,
 })
 export class RequestFiltersComponent {
+  /** Current filters from the URL (initial load, Back/Forward, shared links). */
+  readonly value = input.required<RequestFilters>();
   readonly filtersChange = output<RequestFilters>();
+
+  /** Last filters known to the URL – emitted by us or received from outside. */
+  private lastKnown: RequestFilters = EMPTY_FILTERS;
 
   protected readonly statuses = REQUEST_STATUSES;
   protected readonly priorities = REQUEST_PRIORITIES;
@@ -81,16 +86,29 @@ export class RequestFiltersComponent {
   });
 
   constructor() {
+    // URL → form. Changes we emitted ourselves come back here too; those are skipped, otherwise
+    // the form would be reset to an older value while the user is still typing.
+    effect(() => {
+      const value = this.value();
+      if (!sameValue(value, this.lastKnown)) {
+        this.lastKnown = value;
+        this.form.setValue(value, { emitEvent: false });
+      }
+    });
+
+    // Form → URL.
     this.form.valueChanges
       .pipe(
         // Wait until the user stops typing before hitting the server.
         debounceTime(350),
         map(() => this.form.getRawValue()),
-        distinctUntilChanged((a, b) => JSON.stringify(a) === JSON.stringify(b)),
-        filter(() => !this.rangeInvalid()),
+        filter((filters) => !sameValue(filters, this.lastKnown) && !this.rangeInvalid()),
         takeUntilDestroyed(),
       )
-      .subscribe((filters) => this.filtersChange.emit(filters));
+      .subscribe((filters) => {
+        this.lastKnown = filters;
+        this.filtersChange.emit(filters);
+      });
   }
 
   protected rangeInvalid(): boolean {

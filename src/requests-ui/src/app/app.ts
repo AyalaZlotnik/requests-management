@@ -2,12 +2,12 @@ import { Component, inject } from '@angular/core';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatToolbarModule } from '@angular/material/toolbar';
+import { RouterOutlet } from '@angular/router';
 import { CurrentUser } from './core/current-user.service';
-import { RequestsPageComponent } from './features/requests/requests-page.component';
 
 @Component({
   selector: 'app-root',
-  imports: [MatToolbarModule, MatFormFieldModule, MatInputModule, RequestsPageComponent],
+  imports: [MatToolbarModule, MatFormFieldModule, MatInputModule, RouterOutlet],
   template: `
     <mat-toolbar class="top">
       <h1>ניהול פניות</h1>
@@ -18,7 +18,7 @@ import { RequestsPageComponent } from './features/requests/requests-page.compone
       </mat-form-field>
     </mat-toolbar>
     <main>
-      <app-requests-page />
+      <router-outlet />
     </main>
   `,
 })
