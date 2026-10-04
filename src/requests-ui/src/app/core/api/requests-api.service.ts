@@ -6,6 +6,7 @@ import {
   BulkUpdateResult,
   PagedResult,
   RequestDetails,
+  RequestFilters,
   RequestListItem,
   RequestQuery,
   RequestsSummary,
@@ -23,8 +24,9 @@ export class RequestsApi {
     return this.http.get<PagedResult<RequestListItem>>(this.baseUrl, { params: toParams(query) });
   }
 
-  getSummary(): Observable<RequestsSummary> {
-    return this.http.get<RequestsSummary>(`${this.baseUrl}/summary`);
+  /** Same filters as the list. */
+  getSummary(filters: RequestFilters): Observable<RequestsSummary> {
+    return this.http.get<RequestsSummary>(`${this.baseUrl}/summary`, { params: filterParams(filters) });
   }
 
   /** The ETag is the version to send back in If-Match when updating this request. */
@@ -70,12 +72,15 @@ function toVersioned(response: HttpResponse<RequestDetails>): VersionedRequest {
 }
 
 function toParams(query: RequestQuery): HttpParams {
-  let params = new HttpParams()
+  return filterParams(query)
     .set('page', query.page)
     .set('pageSize', query.pageSize)
     .set('sortBy', query.sortBy)
     .set('sortDirection', query.sortDirection);
+}
 
+function filterParams(query: RequestFilters): HttpParams {
+  let params = new HttpParams();
   const text: [string, string][] = [
     ['search', query.search],
     ['organizationName', query.organizationName],

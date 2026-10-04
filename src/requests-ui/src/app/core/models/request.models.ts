@@ -46,12 +46,14 @@ export interface CountByKey<T> {
   count: number;
 }
 
+/** Aggregations for the current filter. byStatus ignores the status filter, byPriority the priority filter. */
 export interface RequestsSummary {
-  totalCount: number;
-  openCount: number;
+  total: number;
   byStatus: CountByKey<RequestStatus>[];
-  openByPriority: CountByKey<RequestPriority>[];
-  topAssigneesByOpenRequests: CountByKey<string>[];
+  byPriority: CountByKey<RequestPriority>[];
+  openOlderThan7Days: number;
+  lastUpdatedAt: string | null;
+  topAssignees: CountByKey<string>[];
   generatedAt: string;
 }
 

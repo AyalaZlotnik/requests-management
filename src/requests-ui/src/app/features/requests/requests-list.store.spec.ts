@@ -113,7 +113,7 @@ describe('RequestsListStore', () => {
     expect(store.isEmpty()).toBe(true);
   });
 
-  it('exposes an error state with the server message', async () => {
+  it('exposes an error state with a Hebrew message for the user', async () => {
     const store = await createStore();
 
     searchRequests()[0].flush(
@@ -122,6 +122,6 @@ describe('RequestsListStore', () => {
     );
 
     expect(store.loading()).toBe(false);
-    expect(store.error()).toBe('Too big.');
+    expect(store.error()).toBe('הבקשה אינה תקינה.');
   });
 });

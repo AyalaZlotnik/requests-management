@@ -28,7 +28,7 @@ import { SummaryPanelComponent } from './summary-panel.component';
   ],
   providers: [RequestsListStore],
   template: `
-    <app-summary-panel [refreshKey]="summaryRefresh()" />
+    <app-summary-panel [filters]="filters()" [refreshKey]="summaryRefresh()" />
 
     <div class="layout" [class.with-details]="store.selectedId() !== null">
       <section class="list">
