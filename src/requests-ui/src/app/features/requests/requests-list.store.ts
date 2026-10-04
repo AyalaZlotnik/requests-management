@@ -11,6 +11,7 @@ import {
   RequestListItem,
   RequestQuery,
   RequestStatus,
+  SortDirection,
   SortField,
 } from '../../core/models/request.models';
 import { UrlState, parseUrlState, sameValue, toQueryParams } from './query-params';
@@ -86,14 +87,8 @@ export class RequestsListStore {
     this.clearSelection();
   }
 
-  sortBy(field: SortField): void {
-    const q = this.query();
-    this.navigate({
-      ...q,
-      sortBy: field,
-      sortDirection: q.sortBy === field && q.sortDirection === 'desc' ? 'asc' : 'desc',
-      page: 1,
-    });
+  sort(sortBy: SortField, sortDirection: SortDirection): void {
+    this.navigate({ ...this.query(), sortBy, sortDirection, page: 1 });
   }
 
   setPage(page: number, pageSize: number): void {

@@ -1,12 +1,14 @@
 import { Component, computed, inject, signal } from '@angular/core';
+import { MatButtonModule } from '@angular/material/button';
+import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
+import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { errorMessage } from '../../core/api/http-error';
 import { CurrentUser } from '../../core/current-user.service';
 import { BulkUpdateResult, RequestStatus } from '../../core/models/request.models';
 import { BulkStatusBarComponent } from './bulk-status-bar.component';
-import { PaginationComponent } from './pagination.component';
+import { PAGE_SIZES, filtersOf, sameValue } from './query-params';
 import { RequestDetailsComponent } from './request-details.component';
 import { RequestFiltersComponent } from './request-filters.component';
-import { filtersOf, sameValue } from './query-params';
 import { RequestsListStore } from './requests-list.store';
 import { RequestsTableComponent } from './requests-table.component';
 import { SummaryPanelComponent } from './summary-panel.component';
@@ -15,10 +17,12 @@ import { SummaryPanelComponent } from './summary-panel.component';
 @Component({
   selector: 'app-requests-page',
   imports: [
+    MatPaginatorModule,
+    MatProgressBarModule,
+    MatButtonModule,
     SummaryPanelComponent,
     RequestFiltersComponent,
     RequestsTableComponent,
-    PaginationComponent,
     RequestDetailsComponent,
     BulkStatusBarComponent,
   ],
@@ -39,51 +43,56 @@ import { SummaryPanelComponent } from './summary-panel.component';
         }
         @if (bulkResult(); as r) {
           <div class="notice" [class.warning]="r.failed > 0" role="status">
-            Bulk update: {{ r.succeeded }} updated, {{ r.failed }} not updated.
+            עדכון מרוכז: {{ r.succeeded }} עודכנו, {{ r.failed }} לא עודכנו.
             @if (r.failed > 0) {
               <ul>
                 @for (item of failedItems(r); track item.id) {
-                  <li>#{{ item.id }} – {{ item.outcome }}: {{ item.error }}</li>
+                  <li>#{{ item.id }} – {{ item.error }}</li>
                 }
               </ul>
             }
-            <button type="button" class="link" (click)="bulkResult.set(null)">Dismiss</button>
+            <button mat-button type="button" (click)="bulkResult.set(null)">סגירה</button>
           </div>
         }
         @if (bulkError()) {
           <p class="error-text" role="alert">{{ bulkError() }}</p>
         }
 
-        @if (store.error(); as error) {
-          <div class="state error" role="alert">
-            <p>Could not load requests: {{ error }}</p>
-            <button type="button" (click)="store.reload()">Retry</button>
-          </div>
-        } @else if (store.isEmpty()) {
-          <div class="state">No requests match the current filters.</div>
-        } @else if (store.result(); as result) {
-          <app-requests-table
-            [items]="result.items"
-            [sortBy]="store.query().sortBy"
-            [sortDirection]="store.query().sortDirection"
-            [selectedIds]="store.selectedIds()"
-            [activeId]="store.selectedId()"
-            [loading]="store.loading()"
-            (sort)="store.sortBy($event)"
-            (open)="store.openRequest($event)"
-            (toggleSelect)="store.toggleSelection($event)"
-            (toggleAll)="store.toggleAllOnPage()" />
-          <app-pagination
-            [page]="result.page"
-            [pageSize]="result.pageSize"
-            [totalPages]="result.totalPages"
-            [totalCount]="result.totalCount"
-            (pageChange)="store.setPage($event, result.pageSize)"
-            (pageSizeChange)="store.setPage(1, $event)" />
-        }
-        @if (store.loading()) {
-          <div class="state loading" aria-live="polite">Loading…</div>
-        }
+        <div class="results">
+          @if (store.loading()) {
+            <mat-progress-bar mode="indeterminate" aria-label="טוען פניות" />
+          }
+
+          @if (store.error(); as error) {
+            <div class="state error" role="alert">
+              <p>לא ניתן לטעון את הפניות: {{ error }}</p>
+              <button mat-stroked-button type="button" (click)="store.reload()">ניסיון חוזר</button>
+            </div>
+          } @else if (store.isEmpty()) {
+            <div class="state" role="status">לא נמצאו פניות התואמות לסינון.</div>
+          } @else if (store.result(); as result) {
+            <app-requests-table
+              [class.busy]="store.loading()"
+              [items]="result.items"
+              [sortBy]="store.query().sortBy"
+              [sortDirection]="store.query().sortDirection"
+              [selectedIds]="store.selectedIds()"
+              [activeId]="store.selectedId()"
+              (sort)="store.sort($event.field, $event.direction)"
+              (open)="store.openRequest($event)"
+              (toggleSelect)="store.toggleSelection($event)"
+              (toggleAll)="store.toggleAllOnPage()" />
+            <mat-paginator
+              [length]="result.totalCount"
+              [pageIndex]="result.page - 1"
+              [pageSize]="result.pageSize"
+              [pageSizeOptions]="pageSizes"
+              showFirstLastButtons
+              (page)="onPage($event)" />
+          } @else {
+            <div class="state" role="status">טוען פניות…</div>
+          }
+        </div>
       </section>
 
       @if (store.selectedId(); as id) {
@@ -96,11 +105,16 @@ export class RequestsPageComponent {
   protected readonly store = inject(RequestsListStore);
   private readonly user = inject(CurrentUser);
 
+  protected readonly pageSizes = PAGE_SIZES;
   protected readonly filters = computed(() => filtersOf(this.store.query()), { equal: sameValue });
   protected readonly summaryRefresh = signal(0);
   protected readonly bulkBusy = signal(false);
   protected readonly bulkResult = signal<BulkUpdateResult | null>(null);
   protected readonly bulkError = signal<string | null>(null);
+
+  protected onPage(event: PageEvent): void {
+    this.store.setPage(event.pageIndex + 1, event.pageSize);
+  }
 
   protected onRequestChanged(): void {
     this.store.reload();
