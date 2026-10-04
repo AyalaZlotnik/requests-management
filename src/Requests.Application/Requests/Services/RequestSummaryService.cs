@@ -6,41 +6,59 @@ namespace Requests.Application.Requests.Services;
 
 public interface IRequestSummaryService
 {
-    Task<RequestsSummaryDto> GetSummaryAsync(CancellationToken ct);
+    Task<RequestsSummaryDto> GetSummaryAsync(RequestFilter filter, CancellationToken ct);
 }
 
 /// <summary>
-/// Dashboard aggregations. They scan the whole table, are identical for every user and are read on
-/// every page load – so they are cached (see <see cref="ISummaryCache"/>).
+/// Summary for the current filter, computed from one GROUP BY (Status, Priority) plus a top-handlers query.
+/// The unfiltered view – the screen everyone lands on, and the most expensive one (whole table) – is cached;
+/// filtered views are narrower, use the indexes, and are computed on every call.
 /// </summary>
 public class RequestSummaryService(IRequestRepository repository, ISummaryCache cache, TimeProvider timeProvider)
     : IRequestSummaryService
 {
     private const int TopAssignees = 5;
+    private static readonly TimeSpan OpenAgeThreshold = TimeSpan.FromDays(7);
 
-    public Task<RequestsSummaryDto> GetSummaryAsync(CancellationToken ct) => cache.GetOrCreateAsync(ComputeAsync, ct);
+    public Task<RequestsSummaryDto> GetSummaryAsync(RequestFilter filter, CancellationToken ct) =>
+        filter.HasNoFilters()
+            ? cache.GetOrCreateAsync(token => ComputeAsync(filter, token), ct)
+            : ComputeAsync(filter, ct);
 
-    private async Task<RequestsSummaryDto> ComputeAsync(CancellationToken ct)
+    private async Task<RequestsSummaryDto> ComputeAsync(RequestFilter filter, CancellationToken ct)
     {
-        var groups = await repository.CountByStatusAndPriorityAsync(ct);
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var buckets = await repository.GetSummaryBucketsAsync(filter, now - OpenAgeThreshold, ct);
 
+        var selectedStatuses = filter.Status is { Length: > 0 } s ? s.ToHashSet() : [.. Enum.GetValues<RequestStatus>()];
+        var selectedPriorities = filter.Priority is { Length: > 0 } p ? p.ToHashSet() : [.. Enum.GetValues<RequestPriority>()];
+
+        // Facet counts: each breakdown ignores its own filter but honours the other one.
         var byStatus = Enum.GetValues<RequestStatus>()
-            .Select(s => new CountByKey<RequestStatus>(s, groups.Where(g => g.Status == s).Sum(g => g.Count)))
+            .Select(status => new CountByKey<RequestStatus>(status, buckets
+                .Where(b => b.Status == status && selectedPriorities.Contains(b.Priority))
+                .Sum(b => b.Count)))
             .ToList();
 
-        var openGroups = groups.Where(g => g.Status != RequestStatus.Completed).ToList();
-        var openByPriority = Enum.GetValues<RequestPriority>()
-            .Select(p => new CountByKey<RequestPriority>(p, openGroups.Where(g => g.Priority == p).Sum(g => g.Count)))
+        var byPriority = Enum.GetValues<RequestPriority>()
+            .Select(priority => new CountByKey<RequestPriority>(priority, buckets
+                .Where(b => b.Priority == priority && selectedStatuses.Contains(b.Status))
+                .Sum(b => b.Count)))
             .ToList();
 
-        var topAssignees = await repository.GetTopAssigneesByOpenRequestsAsync(TopAssignees, ct);
+        var matching = buckets
+            .Where(b => selectedStatuses.Contains(b.Status) && selectedPriorities.Contains(b.Priority))
+            .ToList();
+
+        var topAssignees = await repository.GetTopAssigneesAsync(filter, TopAssignees, ct);
 
         return new RequestsSummaryDto(
-            TotalCount: groups.Sum(g => g.Count),
-            OpenCount: openGroups.Sum(g => g.Count),
+            Total: matching.Sum(b => b.Count),
             ByStatus: byStatus,
-            OpenByPriority: openByPriority,
-            TopAssigneesByOpenRequests: topAssignees,
-            GeneratedAt: timeProvider.GetUtcNow().UtcDateTime);
+            ByPriority: byPriority,
+            OpenOlderThan7Days: matching.Where(b => b.Status != RequestStatus.Completed).Sum(b => b.CreatedBeforeCutoff),
+            LastUpdatedAt: matching.Max(b => b.LastUpdatedAt),
+            TopAssignees: topAssignees,
+            GeneratedAt: now);
     }
 }

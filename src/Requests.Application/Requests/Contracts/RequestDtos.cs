@@ -35,10 +35,23 @@ public record StatusHistoryDto(
 
 public record CountByKey<TKey>(TKey Key, int Count);
 
+/// <summary>
+/// Aggregations for the current filter.
+/// ByStatus ignores only the status filter and ByPriority only the priority filter (facet counts),
+/// so they show how many requests are in the other categories; everything else honours all filters.
+/// </summary>
+/// <param name="Total">Same number as the list total for the same filters.</param>
+/// <param name="ByStatus">Count per status, ignoring the status filter.</param>
+/// <param name="ByPriority">Count per priority, ignoring the priority filter.</param>
+/// <param name="OpenOlderThan7Days">Not completed and created more than 7 days ago.</param>
+/// <param name="LastUpdatedAt">Most recent UpdatedAt among the matching requests.</param>
+/// <param name="TopAssignees">Handlers with the most open matching requests (top 5).</param>
+/// <param name="GeneratedAt">When the numbers were computed (the unfiltered view may come from the cache).</param>
 public record RequestsSummaryDto(
-    int TotalCount,
-    int OpenCount,
+    int Total,
     IReadOnlyList<CountByKey<RequestStatus>> ByStatus,
-    IReadOnlyList<CountByKey<RequestPriority>> OpenByPriority,
-    IReadOnlyList<CountByKey<string>> TopAssigneesByOpenRequests,
+    IReadOnlyList<CountByKey<RequestPriority>> ByPriority,
+    int OpenOlderThan7Days,
+    DateTime? LastUpdatedAt,
+    IReadOnlyList<CountByKey<string>> TopAssignees,
     DateTime GeneratedAt);

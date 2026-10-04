@@ -73,14 +73,20 @@ public class RequestRepository(RequestsDbContext db) : IRequestRepository
             .Select(h => new StatusHistoryDto(h.Id, h.PreviousStatus, h.NewStatus, h.ChangedAt, h.ChangedBy))
             .FirstOrDefaultAsync(ct);
 
-    public async Task<IReadOnlyList<StatusPriorityCount>> CountByStatusAndPriorityAsync(CancellationToken ct) =>
-        await db.Requests
+    // A single GROUP BY returns at most 12 rows; every number in the summary is a sum over them.
+    public async Task<IReadOnlyList<SummaryBucket>> GetSummaryBucketsAsync(RequestFilter filter, DateTime openOlderThan, CancellationToken ct) =>
+        await ApplySharedFilters(db.Requests.AsNoTracking(), filter)
             .GroupBy(r => new { r.Status, r.Priority })
-            .Select(g => new StatusPriorityCount(g.Key.Status, g.Key.Priority, g.Count()))
+            .Select(g => new SummaryBucket(
+                g.Key.Status,
+                g.Key.Priority,
+                g.Count(),
+                g.Count(r => r.CreatedAt < openOlderThan),
+                g.Max(r => (DateTime?)r.UpdatedAt)))
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<CountByKey<string>>> GetTopAssigneesByOpenRequestsAsync(int count, CancellationToken ct) =>
-        await db.Requests
+    public async Task<IReadOnlyList<CountByKey<string>>> GetTopAssigneesAsync(RequestFilter filter, int count, CancellationToken ct) =>
+        await ApplyFilters(db.Requests.AsNoTracking(), filter)
             .Where(r => r.Status != RequestStatus.Completed && r.AssignedTo != null)
             .GroupBy(r => r.AssignedTo!)
             .Select(g => new { Assignee = g.Key, Count = g.Count() })
@@ -118,14 +124,22 @@ public class RequestRepository(RequestsDbContext db) : IRequestRepository
         }
     }
 
-    private static IQueryable<ServiceRequest> ApplyFilters(IQueryable<ServiceRequest> source, RequestSearchQuery query)
+    private static IQueryable<ServiceRequest> ApplyFilters(IQueryable<ServiceRequest> source, RequestFilter filter)
     {
-        if (query.Status is { Length: > 0 } statuses)
+        source = ApplySharedFilters(source, filter);
+
+        if (filter.Status is { Length: > 0 } statuses)
             source = source.Where(r => statuses.Contains(r.Status));
 
-        if (query.Priority is { Length: > 0 } priorities)
+        if (filter.Priority is { Length: > 0 } priorities)
             source = source.Where(r => priorities.Contains(r.Priority));
 
+        return source;
+    }
+
+    /// <summary>Every filter except Status and Priority (the summary facets apply those themselves).</summary>
+    private static IQueryable<ServiceRequest> ApplySharedFilters(IQueryable<ServiceRequest> source, RequestFilter query)
+    {
         if (!string.IsNullOrWhiteSpace(query.OrganizationName))
         {
             var organization = query.OrganizationName.Trim();

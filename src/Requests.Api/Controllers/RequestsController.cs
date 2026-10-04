@@ -21,10 +21,15 @@ public class RequestsController(
     public Task<PagedResult<RequestListItemDto>> Search([FromQuery] RequestSearchQuery query, CancellationToken ct) =>
         queries.SearchAsync(query, ct);
 
-    /// <summary>Aggregations for the dashboard (cached).</summary>
+    /// <summary>
+    /// Aggregations for the same filters as the list (facet counts by status and priority).
+    /// The unfiltered view is served from a cache that is invalidated on every status change.
+    /// </summary>
     [HttpGet("summary")]
     [ProducesResponseType<RequestsSummaryDto>(StatusCodes.Status200OK)]
-    public Task<RequestsSummaryDto> GetSummary(CancellationToken ct) => summary.GetSummaryAsync(ct);
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    public Task<RequestsSummaryDto> GetSummary([FromQuery] RequestFilter filter, CancellationToken ct) =>
+        summary.GetSummaryAsync(filter, ct);
 
     /// <summary>One request. The ETag response header is the version to send back in If-Match when updating.</summary>
     [HttpGet("{id:int}")]

@@ -22,10 +22,14 @@ public interface IRequestRepository
 
     Task<StatusHistoryDto?> GetLastChangeAsync(int requestId, CancellationToken ct);
 
-    /// <summary>Number of requests per (Status, Priority) – at most 12 rows.</summary>
-    Task<IReadOnlyList<StatusPriorityCount>> CountByStatusAndPriorityAsync(CancellationToken ct);
+    /// <summary>
+    /// One row per (Status, Priority) – at most 12 – for requests matching every filter except Status and Priority
+    /// (those are applied by the caller, so each facet can ignore its own filter).
+    /// </summary>
+    Task<IReadOnlyList<SummaryBucket>> GetSummaryBucketsAsync(RequestFilter filter, DateTime openOlderThan, CancellationToken ct);
 
-    Task<IReadOnlyList<CountByKey<string>>> GetTopAssigneesByOpenRequestsAsync(int count, CancellationToken ct);
+    /// <summary>Handlers with the most open requests matching all filters.</summary>
+    Task<IReadOnlyList<CountByKey<string>>> GetTopAssigneesAsync(RequestFilter filter, int count, CancellationToken ct);
 
     /// <summary>Loads requests for modification. Missing ids are simply not returned.</summary>
     Task<IReadOnlyList<ServiceRequest>> GetForUpdateAsync(IReadOnlyCollection<int> ids, CancellationToken ct);
@@ -48,4 +52,4 @@ public interface IRequestRepository
     Task SaveChangesAsync(CancellationToken ct);
 }
 
-public record StatusPriorityCount(RequestStatus Status, RequestPriority Priority, int Count);
+public record SummaryBucket(RequestStatus Status, RequestPriority Priority, int Count, int CreatedBeforeCutoff, DateTime? LastUpdatedAt);
