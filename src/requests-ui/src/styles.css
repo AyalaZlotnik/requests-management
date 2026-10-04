@@ -77,10 +77,19 @@ h3 { font-size: 13px; margin: 0 0 8px; color: var(--muted); font-weight: 600; }
   display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
   background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px;
 }
-.filters mat-form-field { width: 190px; }
-.filters mat-form-field.grow { flex: 1 1 260px; }
-.chip-group { display: flex; align-items: center; gap: 8px; }
-.chip-label { font-size: 13px; color: var(--muted); }
+.filters { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 10px; padding: 10px 12px; }
+/* Lower, outlined fields instead of the tall filled default. */
+.filters { --mat-form-field-container-height: 44px; --mat-form-field-container-vertical-padding: 10px; }
+.filters-main { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.search-field { flex: 1 1 320px; max-width: 560px; }
+.field-icon { color: var(--muted); padding-inline: 10px 4px; }
+.compact-chips { --mdc-chip-container-height: 30px; --mat-chip-container-height: 30px; }
+.filters-advanced { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-start; padding-top: 4px; border-top: 1px solid var(--border); }
+.filters-advanced mat-form-field { width: 220px; }
+.filters-advanced .date-field { width: 280px; }
+.count-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; margin-inline-start: 6px; padding: 0 6px; border-radius: 10px; background: var(--s-new); color: #fff; font-size: 12px; }
+.active-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.active-filters { --mdc-chip-container-height: 28px; --mat-chip-container-height: 28px; }
 
 /* Results */
 .results { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }

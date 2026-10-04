@@ -1,7 +1,7 @@
 import { Routes } from '@angular/router';
-import { RequestsPageComponent } from './features/requests/requests-page.component';
 
 export const routes: Routes = [
-  { path: '', component: RequestsPageComponent },
+  // Lazy: the page and its Material modules load as a separate chunk, keeping the initial bundle small.
+  { path: '', loadComponent: () => import('./features/requests/requests-page.component').then((m) => m.RequestsPageComponent) },
   { path: '**', redirectTo: '' },
 ];

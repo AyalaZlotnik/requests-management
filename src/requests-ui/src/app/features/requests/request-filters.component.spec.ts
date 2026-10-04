@@ -1,4 +1,6 @@
 import { TestBed } from '@angular/core/testing';
+import { DateAdapter, provideNativeDateAdapter } from '@angular/material/core';
+import { HebrewDateAdapter } from '../../core/i18n/hebrew-date-adapter';
 import { RequestFilters } from '../../core/models/request.models';
 import { EMPTY_FILTERS } from './query-params';
 import { RequestFiltersComponent } from './request-filters.component';
@@ -8,13 +10,16 @@ describe('RequestFiltersComponent', () => {
   afterEach(() => vi.useRealTimers());
 
   function render() {
-    TestBed.configureTestingModule({ imports: [RequestFiltersComponent] });
+    TestBed.configureTestingModule({
+      imports: [RequestFiltersComponent],
+      providers: [provideNativeDateAdapter(), { provide: DateAdapter, useClass: HebrewDateAdapter }],
+    });
     const fixture = TestBed.createComponent(RequestFiltersComponent);
     fixture.componentRef.setInput('value', EMPTY_FILTERS);
     const emitted: RequestFilters[] = [];
     fixture.componentInstance.filtersChange.subscribe((f) => emitted.push(f));
     fixture.detectChanges();
-    const search = fixture.nativeElement.querySelector('input[type=search]') as HTMLInputElement;
+    const search = fixture.nativeElement.querySelector('.search-field input') as HTMLInputElement;
     return { fixture, emitted, search };
   }
 
@@ -48,18 +53,59 @@ describe('RequestFiltersComponent', () => {
     expect(emitted).toHaveLength(0);
   });
 
-  it('does not emit an inverted date range', () => {
-    const { fixture, emitted } = render();
-    const [from, to] = fixture.nativeElement.querySelectorAll('input[type=date]') as NodeListOf<HTMLInputElement>;
+  function openAdvanced(fixture: ReturnType<typeof render>['fixture']) {
+    const button = [...fixture.nativeElement.querySelectorAll('button')].find((b: HTMLButtonElement) =>
+      b.textContent?.includes('סינון מתקדם'),
+    ) as HTMLButtonElement;
+    button.click();
+    fixture.detectChanges();
+  }
 
-    from.value = '2026-05-01';
-    from.dispatchEvent(new Event('input'));
-    to.value = '2026-04-01';
-    to.dispatchEvent(new Event('input'));
+  function typeDate(input: HTMLInputElement, text: string) {
+    input.value = text;
+    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new Event('blur'));
+  }
+
+  it('reads typed dates day-first and emits them as yyyy-MM-dd', () => {
+    const { fixture, emitted } = render();
+    openAdvanced(fixture);
+    const [from, to] = fixture.nativeElement.querySelectorAll('.date-field input') as NodeListOf<HTMLInputElement>;
+
+    typeDate(from, '01/03/2026');
+    typeDate(to, '31.03.2026');
+    vi.advanceTimersByTime(1000);
+
+    expect(emitted.at(-1)?.createdFrom).toBe('2026-03-01');
+    expect(emitted.at(-1)?.createdTo).toBe('2026-03-31');
+  });
+
+  it('does not emit an inverted date range and explains why next to the field', () => {
+    const { fixture, emitted } = render();
+    openAdvanced(fixture);
+    const [from, to] = fixture.nativeElement.querySelectorAll('.date-field input') as NodeListOf<HTMLInputElement>;
+
+    typeDate(from, '01/05/2026');
+    typeDate(to, '01/04/2026');
     vi.advanceTimersByTime(1000);
     fixture.detectChanges();
 
     expect(emitted).toHaveLength(0);
-    expect(fixture.nativeElement.textContent).toContain('תאריך ההתחלה חייב להיות לפני תאריך הסיום');
+    expect(fixture.nativeElement.querySelector('mat-error')?.textContent).toContain('תאריך ההתחלה חייב להיות לפני תאריך הסיום');
+  });
+
+  it('lists applied filters as chips and removing one clears only that filter', () => {
+    const { fixture, emitted } = render();
+    fixture.componentRef.setInput('value', { ...EMPTY_FILTERS, search: 'דחוף', assignedTo: 'לוי' });
+    fixture.detectChanges();
+
+    const chips = [...fixture.nativeElement.querySelectorAll('.active-filters mat-chip')] as HTMLElement[];
+    expect(chips.map((c) => c.textContent?.trim())).toEqual(['חיפוש: "דחוף"', 'מטפל/ת: לוי']);
+
+    (chips[1].querySelector('button') as HTMLButtonElement).click();
+    vi.advanceTimersByTime(1000);
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toEqual({ ...EMPTY_FILTERS, search: 'דחוף' });
   });
 });
