@@ -64,6 +64,15 @@ public class RequestRepository(RequestsDbContext db) : IRequestRepository
             .Select(h => new StatusHistoryDto(h.Id, h.PreviousStatus, h.NewStatus, h.ChangedAt, h.ChangedBy))
             .ToListAsync(ct);
 
+    public Task<StatusHistoryDto?> GetLastChangeAsync(int requestId, CancellationToken ct) =>
+        db.StatusHistory
+            .AsNoTracking()
+            .Where(h => h.RequestId == requestId)
+            .OrderByDescending(h => h.ChangedAt)
+            .ThenByDescending(h => h.Id)
+            .Select(h => new StatusHistoryDto(h.Id, h.PreviousStatus, h.NewStatus, h.ChangedAt, h.ChangedBy))
+            .FirstOrDefaultAsync(ct);
+
     public async Task<IReadOnlyList<StatusPriorityCount>> CountByStatusAndPriorityAsync(CancellationToken ct) =>
         await db.Requests
             .GroupBy(r => new { r.Status, r.Priority })

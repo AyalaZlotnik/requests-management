@@ -26,9 +26,7 @@ public class BulkUpdateStatusTests(RequestsApiFactory factory) : IClassFixture<R
 
         // Another user changes "stale" after we read it.
         var stale = seeded[2].Id;
-        (await _client.PatchAsJsonAsync($"/api/requests/{stale}/status",
-            new UpdateStatusRequest { Status = RequestStatus.Waiting, RowVersion = versions[stale], ChangedBy = "other" }, Json))
-            .EnsureSuccessStatusCode();
+        (await _client.PatchStatusAsync(stale, RequestStatus.Waiting, $"\"{versions[stale]}\"", "other")).EnsureSuccessStatusCode();
 
         var command = new BulkUpdateStatusRequest
         {

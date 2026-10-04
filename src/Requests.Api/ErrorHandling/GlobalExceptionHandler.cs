@@ -30,11 +30,18 @@ public sealed partial class GlobalExceptionHandler(IProblemDetailsService proble
                 Title = "Resource not found",
                 Detail = exception.Message
             },
-            ConcurrencyConflictException => new ProblemDetails
+            ConcurrencyConflictException conflict => new ProblemDetails
             {
                 Status = StatusCodes.Status409Conflict,
                 Title = "Concurrency conflict",
-                Detail = exception.Message
+                Detail = exception.Message,
+                // 409 rather than 412: 412 carries no body, while the client needs the current state
+                // (and who changed it) to show the user what happened and let them decide.
+                Extensions =
+                {
+                    ["currentState"] = conflict.CurrentState,
+                    ["lastChange"] = conflict.LastChange
+                }
             },
             InvalidStatusTransitionException transition => new ProblemDetails
             {

@@ -8,7 +8,7 @@ namespace Requests.Application.Requests.Services;
 
 public interface IRequestCommandService
 {
-    Task<RequestDetailsDto> UpdateStatusAsync(int id, UpdateStatusRequest command, CancellationToken ct);
+    Task<RequestDetailsDto> UpdateStatusAsync(int id, UpdateStatusRequest command, byte[] expectedVersion, CancellationToken ct);
     Task<BulkUpdateStatusResponse> BulkUpdateStatusAsync(BulkUpdateStatusRequest command, CancellationToken ct);
 }
 
@@ -25,25 +25,30 @@ public partial class RequestCommandService(
     TimeProvider timeProvider,
     ILogger<RequestCommandService> logger) : IRequestCommandService
 {
-    public async Task<RequestDetailsDto> UpdateStatusAsync(int id, UpdateStatusRequest command, CancellationToken ct)
+    public async Task<RequestDetailsDto> UpdateStatusAsync(int id, UpdateStatusRequest command, byte[] expectedVersion, CancellationToken ct)
     {
         var request = (await repository.GetForUpdateAsync([id], ct)).SingleOrDefault()
             ?? throw new NotFoundException("Request", id);
 
-        var clientVersion = Convert.FromBase64String(command.RowVersion);
-
         // Fast path: the client already holds a stale version – no point validating the transition.
-        if (!request.RowVersion.AsSpan().SequenceEqual(clientVersion))
+        if (!request.RowVersion.AsSpan().SequenceEqual(expectedVersion))
         {
-            throw new ConcurrencyConflictException(id);
+            throw await ConflictAsync(id, ct);
         }
 
-        repository.SetExpectedVersion(request, clientVersion);
+        repository.SetExpectedVersion(request, expectedVersion);
         var previousStatus = request.Status;
         repository.AddHistory(request.ChangeStatus(command.Status!.Value, command.ChangedBy.Trim(), Now()));
 
-        // Throws ConcurrencyConflictException if someone committed between our read and our write.
-        await repository.SaveChangesAsync(ct);
+        try
+        {
+            await repository.SaveChangesAsync(ct);
+        }
+        catch (ConcurrencyConflictException)
+        {
+            // Someone committed between our read and our write.
+            throw await ConflictAsync(id, ct);
+        }
 
         summaryCache.Invalidate();
         LogStatusChanged(logger, id, previousStatus, request.Status);
@@ -150,6 +155,17 @@ public partial class RequestCommandService(
                 }
             }
         }
+    }
+
+    /// <summary>Builds the 409 payload: the stored state and who changed it last, read fresh from the database.</summary>
+    private async Task<ConcurrencyConflictException> ConflictAsync(int id, CancellationToken ct)
+    {
+        var current = await repository.FindAsync(id, ct);
+        return new ConcurrencyConflictException(id)
+        {
+            CurrentState = current?.ToDetails(),
+            LastChange = await repository.GetLastChangeAsync(id, ct)
+        };
     }
 
     private static BulkItemResult Conflict(int id) =>

@@ -1,3 +1,5 @@
+using Requests.Application.Requests.Contracts;
+
 namespace Requests.Application.Common;
 
 public sealed class NotFoundException(string resource, object id)
@@ -13,4 +15,10 @@ public sealed class ConcurrencyConflictException(IReadOnlyCollection<int> reques
     public ConcurrencyConflictException(int requestId) : this([requestId]) { }
 
     public IReadOnlyCollection<int> RequestIds { get; } = requestIds;
+
+    /// <summary>The request as it is stored now (single update only), so the client can show what changed.</summary>
+    public RequestDetailsDto? CurrentState { get; init; }
+
+    /// <summary>The latest status change – who changed the request and when (single update only).</summary>
+    public StatusHistoryDto? LastChange { get; init; }
 }

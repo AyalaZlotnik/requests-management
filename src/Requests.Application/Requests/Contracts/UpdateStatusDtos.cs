@@ -3,14 +3,11 @@ using Requests.Application.Requests.Entities;
 
 namespace Requests.Application.Requests.Contracts;
 
+/// <summary>Body of a single status update. The version the client read travels in the If-Match header.</summary>
 public class UpdateStatusRequest
 {
     [Required]
     public RequestStatus? Status { get; set; }
-
-    /// <summary>The RowVersion the client last read. The update is rejected (409) if it is no longer current.</summary>
-    [Required, Base64String]
-    public string RowVersion { get; set; } = string.Empty;
 
     /// <summary>Who made the change (stored in the audit). In a real system this comes from the authenticated user.</summary>
     [Required, StringLength(RequestFieldLimits.ChangedBy, MinimumLength = 1)]

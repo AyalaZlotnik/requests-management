@@ -20,6 +20,8 @@ public interface IRequestRepository
 
     Task<IReadOnlyList<StatusHistoryDto>> GetHistoryAsync(int requestId, CancellationToken ct);
 
+    Task<StatusHistoryDto?> GetLastChangeAsync(int requestId, CancellationToken ct);
+
     /// <summary>Number of requests per (Status, Priority) – at most 12 rows.</summary>
     Task<IReadOnlyList<StatusPriorityCount>> CountByStatusAndPriorityAsync(CancellationToken ct);
 
