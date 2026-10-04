@@ -72,6 +72,15 @@ public class BulkUpdateStatusTests(RequestsApiFactory factory) : IClassFixture<R
     }
 
     [Fact]
+    public async Task Bulk_update_with_an_empty_item_returns_400_not_500()
+    {
+        var response = await _client.PostAsync("/api/requests/bulk/status", new StringContent(
+            """{"status":"InProgress","changedBy":"דנה לוי","items":[null]}""", System.Text.Encoding.UTF8, "application/json"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task Bulk_update_with_duplicate_ids_returns_400()
     {
         var command = new BulkUpdateStatusRequest

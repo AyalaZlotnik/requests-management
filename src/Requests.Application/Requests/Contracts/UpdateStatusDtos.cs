@@ -38,6 +38,13 @@ public class BulkUpdateStatusRequest : IValidatableObject
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
+        // JSON like "items": [null] binds to a list with a null element – reject it instead of failing below.
+        if (Items.Any(i => i is null))
+        {
+            yield return new ValidationResult("Items must not contain empty entries.", [nameof(Items)]);
+            yield break;
+        }
+
         if (Items.GroupBy(i => i.Id).Any(g => g.Count() > 1))
             yield return new ValidationResult("Each request id may appear only once.", [nameof(Items)]);
     }
