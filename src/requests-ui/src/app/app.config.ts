@@ -3,6 +3,7 @@ import { provideHttpClient, withFetch, withInterceptors } from '@angular/common/
 import localeHe from '@angular/common/locales/he';
 import { ApplicationConfig, LOCALE_ID, provideBrowserGlobalErrorListeners } from '@angular/core';
 import { DateAdapter, MAT_DATE_LOCALE, provideNativeDateAdapter } from '@angular/material/core';
+import { MAT_FORM_FIELD_DEFAULT_OPTIONS } from '@angular/material/form-field';
 import { MatPaginatorIntl } from '@angular/material/paginator';
 import { provideRouter } from '@angular/router';
 import { routes } from './app.routes';
@@ -19,6 +20,8 @@ export const appConfig: ApplicationConfig = {
     provideRouter(routes),
     { provide: LOCALE_ID, useValue: 'he' },
     { provide: MatPaginatorIntl, useClass: HebrewPaginatorIntl },
+    // One field style everywhere: outlined, no reserved space under the field unless there is a message.
+    { provide: MAT_FORM_FIELD_DEFAULT_OPTIONS, useValue: { appearance: 'outline', subscriptSizing: 'dynamic' } },
     // Date pickers: Hebrew calendar, day-first typing (see HebrewDateAdapter).
     provideNativeDateAdapter(),
     { provide: DateAdapter, useClass: HebrewDateAdapter },
