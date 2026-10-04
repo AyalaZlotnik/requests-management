@@ -1,17 +1,16 @@
 using System.Net;
 using System.Net.Http.Json;
+using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Requests.Application.Requests.Entities;
-using Requests.Application.Common;
 using Requests.Application.Requests.Contracts;
+using Requests.Application.Requests.Entities;
 using Requests.Tests.Support;
 using static Requests.Tests.Support.RequestsApiFactory;
 
 namespace Requests.Tests.Api;
 
-[Collection(ApiTestsDefinition.Name)]
-public class UpdateStatusTests(RequestsApiFactory factory)
+public class UpdateStatusTests(RequestsApiFactory factory) : IClassFixture<RequestsApiFactory>
 {
     private readonly HttpClient _client = factory.CreateClient();
 
@@ -23,18 +22,20 @@ public class UpdateStatusTests(RequestsApiFactory factory)
 
         var response = await Patch(request.Id, RequestStatus.InProgress, before.RowVersion, "dana");
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
         var after = (await response.Content.ReadFromJsonAsync<RequestDetailsDto>(Json))!;
-        Assert.Equal(RequestStatus.InProgress, after.Status);
-        Assert.NotEqual(before.RowVersion, after.RowVersion);
-        Assert.True(after.UpdatedAt > before.UpdatedAt);
+        after.Status.Should().Be(RequestStatus.InProgress);
+        after.RowVersion.Should().NotBe(before.RowVersion);
+        after.UpdatedAt.Should().BeAfter(before.UpdatedAt);
 
         var history = await _client.GetFromJsonAsync<List<StatusHistoryDto>>($"/api/requests/{request.Id}/history", Json);
-        var entry = Assert.Single(history!);
-        Assert.Equal(RequestStatus.New, entry.PreviousStatus);
-        Assert.Equal(RequestStatus.InProgress, entry.NewStatus);
-        Assert.Equal("dana", entry.ChangedBy);
-        Assert.Equal(after.UpdatedAt, entry.ChangedAt);
+        history.Should().ContainSingle().Which.Should().BeEquivalentTo(new
+        {
+            PreviousStatus = RequestStatus.New,
+            NewStatus = RequestStatus.InProgress,
+            ChangedBy = "dana",
+            ChangedAt = after.UpdatedAt
+        });
     }
 
     [Fact]
@@ -47,13 +48,13 @@ public class UpdateStatusTests(RequestsApiFactory factory)
         var responses = await Task.WhenAll(Enumerable.Range(1, 5).Select(i =>
             Patch(request.Id, i % 2 == 0 ? RequestStatus.Waiting : RequestStatus.InProgress, version, $"user{i}")));
 
-        Assert.Single(responses, r => r.StatusCode == HttpStatusCode.OK);
-        Assert.Equal(4, responses.Count(r => r.StatusCode == HttpStatusCode.Conflict));
+        responses.Should().ContainSingle(r => r.StatusCode == HttpStatusCode.OK);
+        responses.Count(r => r.StatusCode == HttpStatusCode.Conflict).Should().Be(4);
 
         // No lost update: exactly one audit row, and it matches the stored status.
         var stored = await Get(request.Id);
         var history = await factory.QueryDbAsync(db => db.StatusHistory.Where(h => h.RequestId == request.Id).ToListAsync());
-        Assert.Equal(stored.Status, Assert.Single(history).NewStatus);
+        history.Should().ContainSingle().Which.NewStatus.Should().Be(stored.Status);
     }
 
     [Fact]
@@ -65,8 +66,8 @@ public class UpdateStatusTests(RequestsApiFactory factory)
 
         var response = await Patch(request.Id, RequestStatus.Waiting, staleVersion, "second");
 
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.Equal(RequestStatus.InProgress, (await Get(request.Id)).Status);
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await Get(request.Id)).Status.Should().Be(RequestStatus.InProgress);
     }
 
     [Fact]
@@ -77,10 +78,10 @@ public class UpdateStatusTests(RequestsApiFactory factory)
 
         var response = await Patch(request.Id, RequestStatus.Completed, version, "dana");
 
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
         var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>(Json);
-        Assert.Equal("Invalid status transition", problem!.Title);
-        Assert.Equal(RequestStatus.New, (await Get(request.Id)).Status);
+        problem!.Title.Should().Be("Invalid status transition");
+        (await Get(request.Id)).Status.Should().Be(RequestStatus.New);
     }
 
     [Fact]
@@ -90,7 +91,7 @@ public class UpdateStatusTests(RequestsApiFactory factory)
 
         var response = await Patch(424242, RequestStatus.InProgress, "AAAAAAAAB9E=", "dana");
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Theory]
@@ -105,7 +106,7 @@ public class UpdateStatusTests(RequestsApiFactory factory)
         var response = await _client.PatchAsync($"/api/requests/{request.Id}/status",
             new StringContent(body, System.Text.Encoding.UTF8, "application/json"));
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]
@@ -113,14 +114,14 @@ public class UpdateStatusTests(RequestsApiFactory factory)
     {
         var request = await SeedOne(RequestStatus.New);
         var before = await _client.GetFromJsonAsync<RequestsSummaryDto>("/api/requests/summary", Json);
-        Assert.Equal(1, before!.ByStatus.Single(s => s.Key == RequestStatus.New).Count);
+        before!.ByStatus.Single(s => s.Key == RequestStatus.New).Count.Should().Be(1);
 
         var version = (await Get(request.Id)).RowVersion;
         (await Patch(request.Id, RequestStatus.InProgress, version, "dana")).EnsureSuccessStatusCode();
 
         var after = await _client.GetFromJsonAsync<RequestsSummaryDto>("/api/requests/summary", Json);
-        Assert.Equal(0, after!.ByStatus.Single(s => s.Key == RequestStatus.New).Count);
-        Assert.Equal(1, after.ByStatus.Single(s => s.Key == RequestStatus.InProgress).Count);
+        after!.ByStatus.Single(s => s.Key == RequestStatus.New).Count.Should().Be(0);
+        after.ByStatus.Single(s => s.Key == RequestStatus.InProgress).Count.Should().Be(1);
     }
 
     private async Task<ServiceRequest> SeedOne(RequestStatus status) =>

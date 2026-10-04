@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Requests.Application.Requests.Entities;
 using Requests.Application.Common;
@@ -9,8 +10,7 @@ using static Requests.Tests.Support.RequestsApiFactory;
 
 namespace Requests.Tests.Api;
 
-[Collection(ApiTestsDefinition.Name)]
-public class BulkUpdateStatusTests(RequestsApiFactory factory)
+public class BulkUpdateStatusTests(RequestsApiFactory factory) : IClassFixture<RequestsApiFactory>
 {
     private readonly HttpClient _client = factory.CreateClient();
 
@@ -43,22 +43,19 @@ public class BulkUpdateStatusTests(RequestsApiFactory factory)
 
         var response = await _client.PostAsJsonAsync("/api/requests/bulk/status", command, Json);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
         var result = (await response.Content.ReadFromJsonAsync<BulkUpdateStatusResponse>(Json))!;
-        Assert.Equal(5, result.Requested);
-        Assert.Equal(2, result.Succeeded);
-        Assert.Equal(3, result.Failed);
-        Assert.Equal(
-            [BulkItemOutcome.Updated, BulkItemOutcome.Updated, BulkItemOutcome.Conflict, BulkItemOutcome.InvalidTransition, BulkItemOutcome.NotFound],
-            result.Results.Select(r => r.Outcome));
-        Assert.All(result.Results.Where(r => r.Outcome == BulkItemOutcome.Updated), r => Assert.NotNull(r.RowVersion));
+        result.Should().BeEquivalentTo(new { Requested = 5, Succeeded = 2, Failed = 3 });
+        result.Results.Select(r => r.Outcome).Should().Equal(
+            BulkItemOutcome.Updated, BulkItemOutcome.Updated, BulkItemOutcome.Conflict, BulkItemOutcome.InvalidTransition, BulkItemOutcome.NotFound);
+        result.Results.Where(r => r.Outcome == BulkItemOutcome.Updated).Should().OnlyContain(r => r.RowVersion != null);
 
         // Only the two valid items changed, and each has exactly one bulk audit row.
         var bulkAudit = await factory.QueryDbAsync(db => db.StatusHistory.Where(h => h.ChangedBy == "bulk-user").Select(h => h.RequestId).ToListAsync());
-        Assert.Equal([seeded[0].Id, seeded[1].Id], bulkAudit.Order());
+        bulkAudit.Should().BeEquivalentTo([seeded[0].Id, seeded[1].Id]);
         var stored = await factory.QueryDbAsync(db => db.Requests.ToDictionaryAsync(r => r.Id, r => r.Status));
-        Assert.Equal(RequestStatus.Waiting, stored[stale]);
-        Assert.Equal(RequestStatus.InProgress, stored[seeded[3].Id]);
+        stored[stale].Should().Be(RequestStatus.Waiting);
+        stored[seeded[3].Id].Should().Be(RequestStatus.InProgress);
     }
 
     [Fact]
@@ -73,7 +70,7 @@ public class BulkUpdateStatusTests(RequestsApiFactory factory)
 
         var response = await _client.PostAsJsonAsync("/api/requests/bulk/status", command, Json);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]
@@ -88,7 +85,7 @@ public class BulkUpdateStatusTests(RequestsApiFactory factory)
 
         var response = await _client.PostAsJsonAsync("/api/requests/bulk/status", command, Json);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     private Task<Dictionary<int, string>> CurrentVersions() =>

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
 using Requests.Application.Requests.Entities;
 using Requests.Application.Common;
@@ -9,8 +10,7 @@ using static Requests.Tests.Support.RequestsApiFactory;
 
 namespace Requests.Tests.Api;
 
-[Collection(ApiTestsDefinition.Name)]
-public class SearchRequestsTests(RequestsApiFactory factory)
+public class SearchRequestsTests(RequestsApiFactory factory) : IClassFixture<RequestsApiFactory>
 {
     private readonly HttpClient _client = factory.CreateClient();
 
@@ -32,11 +32,11 @@ public class SearchRequestsTests(RequestsApiFactory factory)
         var page1 = await GetPage("search=boiler&status=New&priority=High&createdFrom=2026-03-01&createdTo=2026-03-31&sortBy=createdAt&sortDirection=desc&pageSize=2&page=1");
         var page2 = await GetPage("search=boiler&status=New&priority=High&createdFrom=2026-03-01&createdTo=2026-03-31&sortBy=createdAt&sortDirection=desc&pageSize=2&page=2");
 
-        Assert.Equal(3, page1.TotalCount);
-        Assert.Equal(2, page1.TotalPages);
-        Assert.Equal(["Annual report", "Boiler inspection B"], page1.Items.Select(i => i.Title));
-        Assert.Equal(["Boiler inspection A"], page2.Items.Select(i => i.Title));
-        Assert.All(page1.Items, i => Assert.False(string.IsNullOrEmpty(i.RowVersion)));
+        page1.TotalCount.Should().Be(3);
+        page1.TotalPages.Should().Be(2);
+        page1.Items.Select(i => i.Title).Should().Equal("Annual report", "Boiler inspection B");
+        page2.Items.Select(i => i.Title).Should().Equal("Boiler inspection A");
+        page1.Items.Should().OnlyContain(i => !string.IsNullOrEmpty(i.RowVersion));
     }
 
     [Fact]
@@ -50,7 +50,7 @@ public class SearchRequestsTests(RequestsApiFactory factory)
 
         var result = await GetPage("organizationName=Negev&assignedTo=agent07&sortBy=title&sortDirection=asc");
 
-        Assert.Equal(["A", "B"], result.Items.Select(i => i.Title));
+        result.Items.Select(i => i.Title).Should().Equal("A", "B");
     }
 
     [Theory]
@@ -65,9 +65,9 @@ public class SearchRequestsTests(RequestsApiFactory factory)
     {
         var response = await _client.GetAsync($"/api/requests?{query}");
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var problem = await response.Content.ReadFromJsonAsync<ValidationProblemDetails>(Json);
-        Assert.Contains(field, problem!.Errors.Keys);
+        problem!.Errors.Should().ContainKey(field);
     }
 
     private async Task<PagedResult<RequestListItemDto>> GetPage(string query)

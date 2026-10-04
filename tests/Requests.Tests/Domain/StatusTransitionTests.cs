@@ -1,3 +1,4 @@
+using FluentAssertions;
 using Requests.Application.Requests.Entities;
 using Requests.Tests.Support;
 
@@ -12,7 +13,7 @@ public class StatusTransitionTests
     [InlineData(RequestStatus.Waiting, RequestStatus.InProgress)]
     [InlineData(RequestStatus.Completed, RequestStatus.InProgress)]
     public void Allowed_transitions_are_accepted(RequestStatus from, RequestStatus to) =>
-        Assert.True(StatusTransitions.IsAllowed(from, to));
+        StatusTransitions.IsAllowed(from, to).Should().BeTrue();
 
     [Theory]
     [InlineData(RequestStatus.New, RequestStatus.Completed)]
@@ -20,7 +21,7 @@ public class StatusTransitionTests
     [InlineData(RequestStatus.Completed, RequestStatus.New)]
     [InlineData(RequestStatus.Completed, RequestStatus.Waiting)]
     public void Disallowed_transitions_are_rejected(RequestStatus from, RequestStatus to) =>
-        Assert.False(StatusTransitions.IsAllowed(from, to));
+        StatusTransitions.IsAllowed(from, to).Should().BeFalse();
 
     [Fact]
     public void ChangeStatus_updates_status_and_timestamp_and_returns_audit_record()
@@ -30,12 +31,15 @@ public class StatusTransitionTests
 
         var history = request.ChangeStatus(RequestStatus.InProgress, "dana", now);
 
-        Assert.Equal(RequestStatus.InProgress, request.Status);
-        Assert.Equal(now, request.UpdatedAt);
-        Assert.Equal(RequestStatus.New, history.PreviousStatus);
-        Assert.Equal(RequestStatus.InProgress, history.NewStatus);
-        Assert.Equal("dana", history.ChangedBy);
-        Assert.Equal(now, history.ChangedAt);
+        request.Status.Should().Be(RequestStatus.InProgress);
+        request.UpdatedAt.Should().Be(now);
+        history.Should().BeEquivalentTo(new
+        {
+            PreviousStatus = RequestStatus.New,
+            NewStatus = RequestStatus.InProgress,
+            ChangedBy = "dana",
+            ChangedAt = now
+        });
     }
 
     [Fact]
@@ -44,11 +48,11 @@ public class StatusTransitionTests
         var request = RequestsApiFactory.NewRequest(status: RequestStatus.New);
         var updatedAt = request.UpdatedAt;
 
-        var ex = Assert.Throws<InvalidStatusTransitionException>(() =>
-            request.ChangeStatus(RequestStatus.Completed, "dana", DateTime.UtcNow));
+        var act = () => request.ChangeStatus(RequestStatus.Completed, "dana", DateTime.UtcNow);
 
-        Assert.Equal(RequestStatus.New, request.Status);
-        Assert.Equal(updatedAt, request.UpdatedAt);
-        Assert.Equal([RequestStatus.InProgress, RequestStatus.Waiting], ex.AllowedStatuses);
+        act.Should().Throw<InvalidStatusTransitionException>()
+            .Which.AllowedStatuses.Should().Equal(RequestStatus.InProgress, RequestStatus.Waiting);
+        request.Status.Should().Be(RequestStatus.New);
+        request.UpdatedAt.Should().Be(updatedAt);
     }
 }
