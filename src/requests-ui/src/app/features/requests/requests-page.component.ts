@@ -4,6 +4,7 @@ import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { errorMessage } from '../../core/api/http-error';
 import { CurrentUser } from '../../core/current-user.service';
+import { BULK_OUTCOME_LABELS } from '../../core/i18n/labels';
 import { BulkUpdateResult, RequestStatus } from '../../core/models/request.models';
 import { BulkStatusBarComponent } from './bulk-status-bar.component';
 import { PAGE_SIZES, filtersOf, sameValue } from './query-params';
@@ -47,7 +48,10 @@ import { SummaryPanelComponent } from './summary-panel.component';
             @if (r.failed > 0) {
               <ul>
                 @for (item of failedItems(r); track item.id) {
-                  <li>#{{ item.id }} – {{ item.error }}</li>
+                  <li>
+                    <a href="" (click)="$event.preventDefault(); store.openRequest(item.id)">פנייה #{{ item.id }}</a>
+                    – {{ outcomeLabels[item.outcome] }}
+                  </li>
                 }
               </ul>
             }
@@ -106,6 +110,7 @@ export class RequestsPageComponent {
   private readonly user = inject(CurrentUser);
 
   protected readonly pageSizes = PAGE_SIZES;
+  protected readonly outcomeLabels = BULK_OUTCOME_LABELS;
   protected readonly filters = computed(() => filtersOf(this.store.query()), { equal: sameValue });
   protected readonly summaryRefresh = signal(0);
   protected readonly bulkBusy = signal(false);
