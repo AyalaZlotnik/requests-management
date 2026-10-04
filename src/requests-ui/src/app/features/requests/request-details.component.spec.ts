@@ -33,10 +33,15 @@ describe('RequestDetailsComponent', () => {
   let http: HttpTestingController;
   let dialogData: ConflictDialogData | undefined;
   let dialogChoice: ConflictChoice;
+  /** Every conflict dialog opened, in order; and answers to give, in order (falls back to dialogChoice). */
+  let dialogsOpened: ConflictDialogData[];
+  let nextChoices: ConflictChoice[];
 
   beforeEach(() => {
     dialogData = undefined;
     dialogChoice = 'retry';
+    dialogsOpened = [];
+    nextChoices = [];
     TestBed.configureTestingModule({
       imports: [RequestDetailsComponent],
       providers: [
@@ -47,7 +52,8 @@ describe('RequestDetailsComponent', () => {
           useValue: {
             open: (_: unknown, config: { data: ConflictDialogData }) => {
               dialogData = config.data;
-              return { afterClosed: () => of(dialogChoice) };
+              dialogsOpened.push(config.data);
+              return { afterClosed: () => of(nextChoices.shift() ?? dialogChoice) };
             },
           },
         },
@@ -111,6 +117,32 @@ describe('RequestDetailsComponent', () => {
     retry.flush(request({ status: 'InProgress' }));
     http.expectOne('/api/requests/7').flush(request({ status: 'InProgress' }));
     http.expectOne('/api/requests/7/history').flush([]);
+  });
+
+  it('a retry that hits another 409 opens the dialog again with the newest state and sends nothing twice', () => {
+    const fixture = render();
+    const afterFirst = request({ status: 'Waiting', rowVersion: 'AAAAAAAAAAM=', allowedNextStatuses: ['InProgress', 'Completed'] });
+    const afterSecond = request({ status: 'Completed', rowVersion: 'AAAAAAAAAAQ=', allowedNextStatuses: ['InProgress'] });
+    const secondChange: StatusHistoryEntry = { ...lastChange, id: 2, previousStatus: 'Waiting', newStatus: 'Completed', changedBy: 'מיכל פרץ' };
+    nextChoices = ['retry', 'reload'];
+
+    clickUpdate(fixture);
+    http.expectOne('/api/requests/7/status').flush({ currentState: afterFirst, lastChange }, { status: 409, statusText: 'Conflict' });
+    http.expectOne('/api/requests/7').flush(afterFirst);
+    http.expectOne('/api/requests/7/history').flush([lastChange]);
+
+    // The retry is sent on top of the version from the first 409 – and a third user got there first again.
+    const retry = http.expectOne('/api/requests/7/status');
+    expect(retry.request.headers.get('If-Match')).toBe('"AAAAAAAAAAM="');
+    retry.flush({ currentState: afterSecond, lastChange: secondChange }, { status: 409, statusText: 'Conflict' });
+    http.expectOne('/api/requests/7').flush(afterSecond);
+    http.expectOne('/api/requests/7/history').flush([secondChange, lastChange]);
+
+    // Second dialog shows the newest state and who changed it; the user chooses to look, so nothing more is sent.
+    expect(dialogsOpened).toHaveLength(2);
+    expect(dialogsOpened[1].current.status).toBe('Completed');
+    expect(dialogsOpened[1].lastChange?.changedBy).toBe('מיכל פרץ');
+    http.expectNone('/api/requests/7/status');
   });
 
   it('on 409 with "show current state" sends nothing else', () => {
