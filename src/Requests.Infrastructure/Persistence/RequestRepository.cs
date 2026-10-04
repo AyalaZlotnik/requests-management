@@ -129,10 +129,10 @@ public class RequestRepository(RequestsDbContext db) : IRequestRepository
         source = ApplySharedFilters(source, filter);
 
         if (filter.Status is { Length: > 0 } statuses)
-            source = source.Where(r => statuses.Contains(r.Status));
+            source = source.Where(AnyOf(r => r.Status, statuses));
 
         if (filter.Priority is { Length: > 0 } priorities)
-            source = source.Where(r => priorities.Contains(r.Priority));
+            source = source.Where(AnyOf(r => r.Priority, priorities));
 
         return source;
     }
@@ -184,5 +184,29 @@ public class RequestRepository(RequestsDbContext db) : IRequestRepository
 
         // Id as a tie-breaker gives a stable order, so rows don't jump between pages.
         return desc ? ordered.ThenByDescending(r => r.Id) : ordered.ThenBy(r => r.Id);
+    }
+
+    /// <summary>
+    /// Builds "field = @p0 OR field = @p1 …" for a short list of values.
+    /// EF Core 8 would translate values.Contains(field) to IN (SELECT … FROM OPENJSON(@json)), whose row count
+    /// SQL Server cannot estimate – it then scans instead of seeking (measured: 649 vs 202 reads on the status
+    /// COUNT, see docs/PERFORMANCE.md). Each value stays a parameter, so the plan is still reused.
+    /// </summary>
+    private static Expression<Func<ServiceRequest, bool>> AnyOf<T>(Expression<Func<ServiceRequest, T>> field, IEnumerable<T> values)
+    {
+        var body = values
+            .Distinct()
+            .Select(value => (Expression)Expression.Equal(field.Body, AsParameter(value)))
+            .Aggregate(Expression.OrElse);
+        return Expression.Lambda<Func<ServiceRequest, bool>>(body, field.Parameters);
+    }
+
+    // A value read from an object property is sent by EF as a SQL parameter, not inlined as a constant.
+    private static MemberExpression AsParameter<T>(T value) =>
+        Expression.Property(Expression.Constant(new ParameterValue<T>(value)), nameof(ParameterValue<T>.Value));
+
+    private sealed class ParameterValue<T>(T value)
+    {
+        public T Value { get; } = value;
     }
 }
