@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Requests.Application.Requests.Abstractions;
@@ -16,7 +17,11 @@ namespace Requests.Tests.Support;
 /// EF Core, rowversion concurrency and the schema together (the InMemory provider would not enforce concurrency).
 /// Every test class gets its own database, created by the real migration and deleted afterwards –
 /// classes run in parallel without seeing each other's data.
-/// Server: env var REQUESTS_TEST_SERVER, default LocalDB.
+/// Server, first match wins:
+///   REQUESTS_TEST_CONNECTION – a full connection string (e.g. SQL authentication to a Docker container);
+///   REQUESTS_TEST_SERVER     – a server name, Windows authentication;
+///   otherwise LocalDB.
+/// The database name is always replaced with a new one per test class.
 /// </summary>
 public class RequestsApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
@@ -25,9 +30,21 @@ public class RequestsApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         Converters = { new JsonStringEnumConverter() }
     };
 
-    private readonly string _connectionString =
-        $"Server={Environment.GetEnvironmentVariable("REQUESTS_TEST_SERVER") ?? @"(localdb)\MSSQLLocalDB"};" +
-        $"Database=RequestsTests_{Guid.NewGuid():N};Trusted_Connection=True;TrustServerCertificate=True";
+    private readonly string _connectionString = TestConnectionString($"RequestsTests_{Guid.NewGuid():N}");
+
+    private static string TestConnectionString(string database)
+    {
+        var builder = Environment.GetEnvironmentVariable("REQUESTS_TEST_CONNECTION") is { Length: > 0 } connection
+            ? new SqlConnectionStringBuilder(connection)
+            : new SqlConnectionStringBuilder
+            {
+                DataSource = Environment.GetEnvironmentVariable("REQUESTS_TEST_SERVER") ?? @"(localdb)\MSSQLLocalDB",
+                IntegratedSecurity = true,
+                TrustServerCertificate = true
+            };
+        builder.InitialCatalog = database;
+        return builder.ConnectionString;
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {

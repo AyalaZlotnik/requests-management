@@ -14,10 +14,23 @@
 
 ### הרצה (דקה וחצי)
 
+**Windows עם LocalDB:**
+
 ```bash
 dotnet run --project src/Requests.Api            # טרמינל 1 – בהרצה הראשונה: בסיס נתונים + 100,000 פניות (~15 שניות)
 cd src/requests-ui && npm ci && npm start         # טרמינל 2 – http://localhost:4200
 ```
+
+**Docker (Windows / Mac / Linux)** – SQL Server 2022 בקונטיינר, בלי LocalDB:
+
+```bash
+docker compose up -d --wait                       # טרמינל 1 – ממתין עד ש-SQL Server מוכן
+export ConnectionStrings__RequestsDb='Server=localhost,1433;Database=RequestsManagement;User Id=sa;Password=Requests_Dev_123!;TrustServerCertificate=True'
+dotnet run --project src/Requests.Api
+cd src/requests-ui && npm ci && npm start         # טרמינל 2 – http://localhost:4200
+```
+
+ב-PowerShell, אותו דבר עם `$env:` במקום `export` – ראו [הרצה עם Docker](#הרצה-עם-docker).
 
 פרטים ודרישות מוקדמות ב[הרצה](#הרצה); אם משהו לא עולה – [פתרון תקלות](#פתרון-תקלות).
 
@@ -95,6 +108,7 @@ cd src/requests-ui && npx ng test --watch=false     # 43 בדיקות לקוח
 | פורט 4200 תפוס | `npm start -- --port 4300` ולפתוח http://localhost:4300. ה-Proxy ל-API עובד מכל פורט. |
 | פורט 5080 תפוס | לעצור את התהליך שתופס אותו, או להריץ `dotnet run --project src/Requests.Api -- --urls http://localhost:5081` ולעדכן את `target` ב-[`proxy.conf.json`](src/requests-ui/proxy.conf.json). |
 | SQL Server אחר (Express, Developer, Docker) | `ConnectionStrings__RequestsDb="Server=.\SQLEXPRESS;Database=RequestsManagement;Trusted_Connection=True;TrustServerCertificate=True"` לפני `dotnet run`. לבדיקות: ‏`REQUESTS_TEST_SERVER=.\SQLEXPRESS` (שם השרת בלבד). |
+| Docker: ‏`Login failed for user 'sa'` או שהשרת לא עולה | `docker compose ps` צריך להציג `healthy` – ב-`up -d --wait` הפקודה ממתינה לזה. פורט 1433 תפוס (SQL Server מקומי): לשנות ב-`docker-compose.yml` ל-`"1434:1433"` ובמחרוזת ל-`Server=localhost,1434`. ‏Mac עם Apple Silicon: התמונה היא amd64 – להפעיל ב-Docker Desktop את "Use Rosetta for x86_64/amd64 emulation". |
 | הממשק מציג "אין חיבור לשרת" | השרת לא רץ או עדיין יוצר את הנתונים בהרצה הראשונה – לחכות לשורה `Now listening on` וללחוץ "ניסיון חוזר". |
 
 ## טכנולוגיות וגרסאות
@@ -142,7 +156,40 @@ dotnet test                                    # 75 בדיקות שרת
 cd src/requests-ui && npx ng test --watch=false   # 43 בדיקות לקוח
 ```
 
-**SQL Server אחר:** ב-`src/Requests.Api/appsettings.json` (‏`ConnectionStrings:RequestsDb`) או במשתנה סביבה `ConnectionStrings__RequestsDb`. לבדיקות: `REQUESTS_TEST_SERVER` (שם השרת בלבד; כל מחלקת בדיקות יוצרת ומוחקת בסיס נתונים משלה).
+### הרצה עם Docker
+
+ל-Mac, ל-Linux, או ל-Windows בלי LocalDB. דרוש Docker עם Compose (Docker Desktop, או Docker Engine עם התוסף `compose`). הקובץ [`docker-compose.yml`](docker-compose.yml) מריץ SQL Server 2022 בפורט 1433.
+
+**Bash (Mac / Linux / Git Bash):**
+
+```bash
+docker compose up -d --wait
+export ConnectionStrings__RequestsDb='Server=localhost,1433;Database=RequestsManagement;User Id=sa;Password=Requests_Dev_123!;TrustServerCertificate=True'
+dotnet run --project src/Requests.Api              # בהרצה הראשונה: בסיס נתונים + 100,000 פניות
+
+# בדיקות השרת מול הקונטיינר (כל מחלקת בדיקות יוצרת ומוחקת בסיס נתונים משלה)
+export REQUESTS_TEST_CONNECTION='Server=localhost,1433;User Id=sa;Password=Requests_Dev_123!;TrustServerCertificate=True'
+dotnet test
+
+docker compose down -v                             # עצירה ומחיקת הנתונים
+```
+
+**PowerShell (Windows):**
+
+```powershell
+docker compose up -d --wait
+$env:ConnectionStrings__RequestsDb = 'Server=localhost,1433;Database=RequestsManagement;User Id=sa;Password=Requests_Dev_123!;TrustServerCertificate=True'
+dotnet run --project src/Requests.Api
+
+$env:REQUESTS_TEST_CONNECTION = 'Server=localhost,1433;User Id=sa;Password=Requests_Dev_123!;TrustServerCertificate=True'
+dotnet test
+
+docker compose down -v
+```
+
+הלקוח זהה בשני המסלולים (`npm ci`, `npm start`). הסיסמה ב-`docker-compose.yml` מיועדת לפיתוח מקומי בלבד.
+
+**SQL Server אחר:** ב-`src/Requests.Api/appsettings.json` (‏`ConnectionStrings:RequestsDb`) או במשתנה סביבה `ConnectionStrings__RequestsDb`. לבדיקות: `REQUESTS_TEST_SERVER` (שם שרת, Windows Authentication) או `REQUESTS_TEST_CONNECTION` (מחרוזת התחברות מלאה). בשני המקרים כל מחלקת בדיקות יוצרת ומוחקת בסיס נתונים משלה.
 
 ## מבנה הפתרון
 
