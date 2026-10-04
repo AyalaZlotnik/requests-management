@@ -24,11 +24,15 @@ public static class DependencyInjection
         return services;
     }
 
-    /// <summary>Applies pending EF Core migrations.</summary>
-    public static async Task MigrateDatabaseAsync(this IServiceProvider services, CancellationToken ct = default)
+    /// <summary>Applies pending EF Core migrations and, if requested, seeds test data when the table is empty.</summary>
+    public static async Task InitializeDatabaseAsync(this IServiceProvider services, bool seedIfEmpty, CancellationToken ct = default)
     {
         await using var scope = services.CreateAsyncScope();
         await scope.ServiceProvider.GetRequiredService<RequestsDbContext>().Database.MigrateAsync(ct);
+        if (seedIfEmpty)
+        {
+            await scope.ServiceProvider.GetRequiredService<DataSeeder>().SeedIfEmptyAsync(DataSeeder.DefaultCount, ct);
+        }
     }
 
     /// <summary>Deletes all data and inserts <paramref name="count"/> generated requests (default 100,000).</summary>

@@ -32,9 +32,10 @@ if (args.Length > 0 && args[0] == "seed")
     return;
 }
 
+// Development: create/upgrade the database on startup and seed 100,000 requests on the first run.
 if (app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
 {
-    await app.Services.MigrateDatabaseAsync();
+    await app.Services.InitializeDatabaseAsync(seedIfEmpty: app.Configuration.GetValue<bool>("Database:SeedIfEmpty"));
 }
 
 app.UseExceptionHandler();
