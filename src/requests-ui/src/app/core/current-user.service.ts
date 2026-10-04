@@ -8,7 +8,7 @@ const STORAGE_KEY = 'requests-ui.user';
  */
 @Injectable({ providedIn: 'root' })
 export class CurrentUser {
-  readonly name = signal(readStored() ?? 'demo.user');
+  readonly name = signal(readStored() ?? 'משתמש לדוגמה');
 
   constructor() {
     effect(() => {
