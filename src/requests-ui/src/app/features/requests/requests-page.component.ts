@@ -1,6 +1,5 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
-import { MatDialog } from '@angular/material/dialog';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
@@ -34,24 +33,28 @@ import { SummaryPanelComponent } from './summary-panel.component';
     BulkStatusBarComponent,
   ],
   providers: [RequestsListStore],
-  // Material closes the drawer on Esc only while focus is inside it; after clicking a row focus stays in the list.
-  host: { '(document:keydown.escape)': 'closeDetailsOnEscape()' },
   template: `
     <!-- Details open in a drawer over the list, so the table keeps its full width. Esc or a click outside closes it. -->
-    <mat-drawer-container class="page">
+    <mat-drawer-container class="page" (backdropClick)="store.openRequest(null)">
       <mat-drawer
         class="details-drawer"
         position="end"
         mode="over"
         [opened]="store.selectedId() !== null"
-        (closedStart)="store.openRequest(null)"
+        disableClose
+        (keydown.escape)="closeDetailsOnEscape($event)"
       >
         @if (store.selectedId(); as id) {
           <app-request-details [requestId]="id" (changed)="onRequestChanged()" (closed)="store.openRequest(null)" />
         }
       </mat-drawer>
 
-      <mat-drawer-content class="page-content" [class.with-bulk-bar]="store.selection().size > 0">
+      <!-- Esc closes the drawer from the list as well as from inside it (see closeDetailsOnEscape). -->
+      <mat-drawer-content
+        class="page-content"
+        [class.with-bulk-bar]="store.selection().size > 0"
+        (keydown.escape)="closeDetailsOnEscape($event)"
+      >
         <app-summary-panel [filters]="filters()" [refreshKey]="summaryRefresh()" (statusClick)="toggleStatus($event)" />
         <app-request-filters [value]="filters()" (filtersChange)="store.setFilters($event)" />
 
@@ -130,7 +133,6 @@ export class RequestsPageComponent {
   protected readonly store = inject(RequestsListStore);
   private readonly user = inject(CurrentUser);
   protected readonly connection = inject(ConnectionStatus);
-  private readonly dialog = inject(MatDialog);
 
   protected readonly pageSizes = PAGE_SIZES;
   protected readonly outcomeLabels = BULK_OUTCOME_LABELS;
@@ -148,11 +150,18 @@ export class RequestsPageComponent {
     });
   }
 
-  protected closeDetailsOnEscape(): void {
-    // With the conflict dialog open, Esc belongs to the dialog.
-    if (this.store.selectedId() !== null && this.dialog.openDialogs.length === 0) {
-      this.store.openRequest(null);
-    }
+  /**
+   * Esc closes the details drawer – unless something else used the key: an open dropdown marks it with
+   * preventDefault, but only later, in Material's overlay listener on the document. So the check waits until
+   * the event has finished dispatching (setTimeout 0). Material's drawer would close regardless, so its own
+   * Esc/backdrop handling is off (disableClose) and done here. Dialogs live outside the page and never get here.
+   */
+  protected closeDetailsOnEscape(event: Event): void {
+    setTimeout(() => {
+      if (!event.defaultPrevented && this.store.selectedId() !== null) {
+        this.store.openRequest(null);
+      }
+    });
   }
 
   /** Clicking a status in the summary shows only that status; clicking it again removes the filter. */
