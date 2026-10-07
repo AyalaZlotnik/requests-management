@@ -9,7 +9,7 @@ import { errorMessage } from '../../core/api/http-error';
 import { CurrentUser } from '../../core/current-user.service';
 import { REQUESTS, agree, hebrewCount } from '../../core/i18n/hebrew-count';
 import { BULK_OUTCOME_LABELS } from '../../core/i18n/labels';
-import { BulkUpdateResult, RequestStatus } from '../../core/models/request.models';
+import { BulkUpdateResult, RequestDetails, RequestStatus } from '../../core/models/request.models';
 import { BulkStatusBarComponent } from './bulk-status-bar.component';
 import { PAGE_SIZES, filtersOf, sameValue } from './query-params';
 import { RequestDetailsComponent } from './request-details.component';
@@ -45,7 +45,7 @@ import { SummaryPanelComponent } from './summary-panel.component';
         (keydown.escape)="closeDetailsOnEscape($event)"
       >
         @if (store.selectedId(); as id) {
-          <app-request-details [requestId]="id" (changed)="onRequestChanged()" (closed)="store.openRequest(null)" />
+          <app-request-details [requestId]="id" (changed)="onRequestChanged($event)" (closed)="store.openRequest(null)" />
         }
       </mat-drawer>
 
@@ -175,7 +175,8 @@ export class RequestsPageComponent {
     this.store.setPage(event.pageIndex + 1, event.pageSize);
   }
 
-  protected onRequestChanged(): void {
+  protected onRequestChanged(request: RequestDetails): void {
+    this.store.updateSelectedVersion(request);
     this.store.reload();
     this.summaryRefresh.update((n) => n + 1);
   }

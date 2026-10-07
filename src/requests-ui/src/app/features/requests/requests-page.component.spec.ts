@@ -139,6 +139,34 @@ describe('RequestsPageComponent', () => {
     expect(listRequests()).toHaveLength(0);
   });
 
+  it('a selected request the user updates themselves goes into the bulk with its new version, not as a conflict', async () => {
+    const harness = await open('/?id=2');
+    http.expectOne('/api/requests/2').flush(details(2), { headers: { ETag: '"AAAAAAAAAA2="' } });
+    http.expectOne('/api/requests/2/history').flush([]);
+    harness.detectChanges();
+    const root = harness.routeNativeElement!;
+
+    // Select requests 1 and 2, then update request 2 in the details panel.
+    const rowBoxes = [...root.querySelectorAll<HTMLInputElement>('app-requests-table input[type=checkbox]')].slice(1);
+    rowBoxes[0].click();
+    rowBoxes[1].click();
+    harness.detectChanges();
+    button(root.querySelector('app-request-details')!, 'עדכון').click();
+    http.expectOne('/api/requests/2/status').flush(details(2, { status: 'InProgress', rowVersion: 'AAAAAAAAAB2=' }), { headers: { ETag: '"AAAAAAAAAB2="' } });
+    http.expectOne('/api/requests/2').flush(details(2, { status: 'InProgress', rowVersion: 'AAAAAAAAAB2=' }));
+    http.expectOne('/api/requests/2/history').flush([]);
+    flushReloads(harness, [item(1), item(2, { status: 'InProgress', rowVersion: 'AAAAAAAAAB2=' }), item(3)]);
+
+    button(root, 'עדכון כל הנבחרות').click();
+    const post = http.expectOne('/api/requests/bulk/status');
+    expect(post.request.body.items).toEqual([
+      { id: 1, rowVersion: 'AAAAAAAAAA1=' },
+      { id: 2, rowVersion: 'AAAAAAAAAB2=' },
+    ]);
+    post.flush({ requested: 2, succeeded: 2, failed: 0, results: [] });
+    flushReloads(harness, [item(1), item(2), item(3)]);
+  });
+
   it('after a successful status update the list and the summary are reloaded', async () => {
     const harness = await open('/?id=7', [item(7)]);
     http.expectOne('/api/requests/7').flush(details(7), { headers: { ETag: '"AAAAAAAAAA7="' } });

@@ -123,6 +123,16 @@ export class RequestsListStore {
     });
   }
 
+  /**
+   * The user changed a selected request in the details panel (or saw its current state after a 409): keep its new
+   * version, so their own bulk update does not report it as a conflict. Changes by others are not picked up here –
+   * the user has not seen them, so the bulk still reports them.
+   */
+  updateSelectedVersion(request: { id: number; rowVersion: string }): void {
+    if (!this._selection().has(request.id)) return;
+    this._selection.update((current) => new Map(current).set(request.id, request.rowVersion));
+  }
+
   clearSelection(): void {
     this._selection.set(new Map());
   }
