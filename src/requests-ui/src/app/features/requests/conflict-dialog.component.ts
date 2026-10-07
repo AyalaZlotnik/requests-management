@@ -24,35 +24,7 @@ export type ConflictChoice = 'reload' | 'retry';
 @Component({
   selector: 'app-conflict-dialog',
   imports: [MatDialogModule, MatButtonModule, DatePipe, StatusLabelPipe],
-  template: `
-    <h2 mat-dialog-title>מישהו אחר עדכן את הפנייה בינתיים</h2>
-    <mat-dialog-content>
-      <p class="subject">{{ data.current.title }}</p>
-      <dl class="facts">
-        <dt>מצב נוכחי</dt>
-        <dd><span class="badge" [attr.data-status]="data.current.status">{{ data.current.status | statusLabel }}</span></dd>
-        @if (data.lastChange; as change) {
-          <dt>עודכן על ידי</dt>
-          <dd>{{ change.changedBy }}, {{ change.changedAt | date: 'dd/MM/yyyy HH:mm' }}</dd>
-        }
-        <dt>השינוי שלך</dt>
-        <dd>{{ data.attempted | statusLabel }} – <strong>לא נשמר</strong></dd>
-      </dl>
-      @if (!canRetry) {
-        <p class="muted">
-          לא ניתן להעביר את הפנייה ל"{{ data.attempted | statusLabel }}" מהמצב הנוכחי שלה.
-        </p>
-      }
-    </mat-dialog-content>
-    <mat-dialog-actions align="end">
-      <button mat-button type="button" [mat-dialog-close]="'reload'">הצגת המצב העדכני</button>
-      @if (canRetry) {
-        <button mat-flat-button type="button" [mat-dialog-close]="'retry'">
-          להעביר בכל זאת ל"{{ data.attempted | statusLabel }}"
-        </button>
-      }
-    </mat-dialog-actions>
-  `,
+  templateUrl: './conflict-dialog.component.html',
   styles: `
     .subject { font-weight: 600; margin-top: 0; }
     .facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0 0 8px; }

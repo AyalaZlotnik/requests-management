@@ -18,77 +18,8 @@ import { PriorityLabelPipe, StatusLabelPipe } from './status-label.pipe';
 @Component({
   selector: 'app-summary-panel',
   imports: [DecimalPipe, DatePipe, MatButtonModule, MatProgressBarModule, StatusLabelPipe, PriorityLabelPipe],
-  template: `
-    <section class="summary-strip" aria-label="נתונים מסכמים" [class.busy]="loading()">
-      @if (error()) {
-        <p class="error-text" role="alert">{{ error() }}</p>
-      } @else if (summary(); as s) {
-        <div class="kpi">
-          <span class="kpi-value">{{ s.total | number }}</span>
-          <span class="kpi-label">{{ agree(s.total, 'פנייה', 'פניות') }}</span>
-        </div>
-        <div class="kpi">
-          <span class="kpi-value warn">{{ s.openOlderThan7Days | number }}</span>
-          <span class="kpi-label">{{ agree(s.openOlderThan7Days, 'פתוחה', 'פתוחות') }} מעל 7 ימים</span>
-        </div>
-
-        <div class="status-counts" role="group" aria-label="סינון לפי סטטוס">
-          @for (item of s.byStatus; track item.key) {
-            <button
-              type="button"
-              class="status-count"
-              [class.selected]="isOnlyStatus(item.key)"
-              [attr.aria-pressed]="isOnlyStatus(item.key)"
-              [title]="isOnlyStatus(item.key) ? 'ביטול הסינון לפי סטטוס' : 'הצגת פניות בסטטוס הזה בלבד'"
-              (click)="statusClick.emit(item.key)"
-            >
-              <span class="dot" [attr.data-status]="item.key"></span>
-              {{ item.key | statusLabel }}
-              <strong>{{ item.count | number }}</strong>
-            </button>
-          }
-        </div>
-
-        <span class="spacer"></span>
-        @if (s.lastUpdatedAt) {
-          <span class="muted small">עדכון אחרון {{ s.lastUpdatedAt | date: 'dd/MM/yy HH:mm' }}</span>
-        }
-        <button mat-button type="button" [attr.aria-expanded]="expanded()" (click)="expanded.set(!expanded())">
-          {{ expanded() ? 'הסתרת פילוחים' : 'פילוחים' }}
-        </button>
-      } @else {
-        <mat-progress-bar mode="indeterminate" aria-label="טוען נתונים מסכמים" />
-      }
-    </section>
-
-    @if (expanded() && summary(); as s) {
-      <section class="breakdowns" aria-label="פילוחים">
-        <div class="card">
-          <h3>לפי עדיפות</h3>
-          @for (item of s.byPriority; track item.key) {
-            <div class="bar-row" [class.dim]="priorityFiltered() && !filters().priority.includes(item.key)">
-              <span>{{ item.key | priorityLabel }}</span>
-              <span class="bar"><span [style.width.%]="percent(item.count, maxPriority())" [attr.data-priority]="item.key"></span></span>
-              <span class="num">{{ item.count | number }}</span>
-            </div>
-          }
-          @if (priorityFiltered()) {
-            <p class="muted small">מוצגות כל העדיפויות, לפי שאר הסינונים.</p>
-          }
-        </div>
-        <div class="card">
-          <h3>מטפלים עם הכי הרבה פניות פתוחות</h3>
-          <ol class="plain">
-            @for (item of s.topAssignees; track item.key) {
-              <li><span>{{ item.key }}</span><span class="num">{{ item.count | number }}</span></li>
-            } @empty {
-              <li class="muted">אין פניות פתוחות משויכות</li>
-            }
-          </ol>
-        </div>
-      </section>
-    }
-  `,
+  templateUrl: './summary-panel.component.html'
+  ,
 })
 export class SummaryPanelComponent {
   private readonly api = inject(RequestsApi);

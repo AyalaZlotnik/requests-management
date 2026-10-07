@@ -1,0 +1,84 @@
+<div class="table-wrap">
+      <table
+        mat-table
+        [dataSource]="items()"
+        matSort
+        matSortDisableClear
+        [matSortActive]="sortBy()"
+        [matSortDirection]="sortDirection()"
+        (matSortChange)="onSort($event)"
+      >
+        <ng-container matColumnDef="select">
+          <th mat-header-cell *matHeaderCellDef>
+            <mat-checkbox
+              aria-label="בחירת כל הפניות בעמוד"
+              [checked]="allSelected()"
+              [indeterminate]="someSelected()"
+              (change)="toggleAll.emit()"
+            />
+          </th>
+          <td mat-cell *matCellDef="let row" (click)="$event.stopPropagation()">
+            <mat-checkbox
+              [attr.aria-label]="'בחירת פנייה ' + row.id"
+              [checked]="selectedIds().has(row.id)"
+              (change)="toggleSelect.emit(row)"
+            />
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="id">
+          <th mat-header-cell *matHeaderCellDef>#</th>
+          <td mat-cell *matCellDef="let row" class="muted">{{ row.id }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="title">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>כותרת</th>
+          <td mat-cell *matCellDef="let row" class="clip" [title]="row.title">{{ row.title }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="organizationName">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>ארגון</th>
+          <td mat-cell *matCellDef="let row" class="clip" [title]="row.organizationName">{{ row.organizationName }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="status">
+          <th mat-header-cell *matHeaderCellDef>סטטוס</th>
+          <td mat-cell *matCellDef="let row">
+            <span class="badge" [attr.data-status]="row.status">{{ row.status | statusLabel }}</span>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="priority">
+          <th mat-header-cell *matHeaderCellDef>עדיפות</th>
+          <td mat-cell *matCellDef="let row">
+            <span class="priority" [attr.data-priority]="row.priority">{{ row.priority | priorityLabel }}</span>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="assignedTo">
+          <th mat-header-cell *matHeaderCellDef>מטפל/ת</th>
+          <td mat-cell *matCellDef="let row" class="nowrap">{{ row.assignedTo ?? '—' }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="createdAt">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>נוצרה</th>
+          <td mat-cell *matCellDef="let row" class="nowrap">{{ row.createdAt | date: 'dd/MM/yy HH:mm' }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="updatedAt">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>עודכנה</th>
+          <td mat-cell *matCellDef="let row" class="nowrap">{{ row.updatedAt | date: 'dd/MM/yy HH:mm' }}</td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="columns; sticky: true"></tr>
+        <tr
+          mat-row
+          *matRowDef="let row; columns: columns"
+          [class.active]="row.id === activeId()"
+          (click)="open.emit(row.id)"
+          (keydown.enter)="open.emit(row.id)"
+          tabindex="0"
+        ></tr>
+      </table>
+    </div>
+  
