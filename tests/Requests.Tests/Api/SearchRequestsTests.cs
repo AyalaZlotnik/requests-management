@@ -40,6 +40,21 @@ public class SearchRequestsTests(RequestsApiFactory factory) : IClassFixture<Req
     }
 
     [Fact]
+    public async Task Date_range_sent_as_the_users_local_day_includes_requests_from_early_morning_israel_time()
+    {
+        await factory.ResetAndSeedAsync(
+            NewRequest("Oct 4, 23:30 Israel", createdAt: new DateTime(2026, 10, 4, 20, 30, 0, DateTimeKind.Utc)),
+            NewRequest("Oct 5, 01:00 Israel", createdAt: new DateTime(2026, 10, 4, 22, 0, 0, DateTimeKind.Utc)),
+            NewRequest("Oct 5, 23:30 Israel", createdAt: new DateTime(2026, 10, 5, 20, 30, 0, DateTimeKind.Utc)),
+            NewRequest("Oct 6, 00:30 Israel", createdAt: new DateTime(2026, 10, 5, 21, 30, 0, DateTimeKind.Utc)));
+
+        // What the client sends for "Oct 5" in Israel (UTC+3 in October): local midnight to local end of day, as UTC instants.
+        var result = await GetPage("createdFrom=2026-10-04T21:00:00.000Z&createdTo=2026-10-05T20:59:59.999Z&sortBy=createdAt&sortDirection=asc");
+
+        result.Items.Select(i => i.Title).Should().Equal("Oct 5, 01:00 Israel", "Oct 5, 23:30 Israel");
+    }
+
+    [Fact]
     public async Task Search_filters_by_part_of_the_handler_name_and_organization_prefix()
     {
         await factory.ResetAndSeedAsync(

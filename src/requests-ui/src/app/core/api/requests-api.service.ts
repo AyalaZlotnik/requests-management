@@ -93,9 +93,17 @@ function filterParams(query: RequestFilters): HttpParams {
   query.status.forEach((s) => (params = params.append('status', s)));
   query.priority.forEach((p) => (params = params.append('priority', p)));
 
-  // Dates are picked as calendar days; the API filters on UTC timestamps (inclusive range).
-  if (query.createdFrom) params = params.set('createdFrom', `${query.createdFrom}T00:00:00Z`);
-  if (query.createdTo) params = params.set('createdTo', `${query.createdTo}T23:59:59.999Z`);
+  // Dates are picked as calendar days in the user's time zone. The API filters on UTC timestamps (inclusive range),
+  // so each day is sent as local midnight to local end of day, converted to UTC (an Israeli day starts at 21:00 or
+  // 22:00 UTC the day before, depending on daylight saving time).
+  if (query.createdFrom) params = params.set('createdFrom', localDayStart(query.createdFrom).toISOString());
+  if (query.createdTo) params = params.set('createdTo', new Date(localDayStart(query.createdTo, 1).getTime() - 1).toISOString());
 
   return params;
+}
+
+/** Local midnight of a yyyy-MM-dd day, optionally some days later. */
+function localDayStart(day: string, addDays = 0): Date {
+  const [year, month, date] = day.split('-').map(Number);
+  return new Date(year, month - 1, date + addDays);
 }
